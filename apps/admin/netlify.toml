@@ -7,6 +7,9 @@
 #
 # Do NOT set Base directory to apps/admin — that breaks Next module resolution
 # (Cannot find module 'next/dist/server/lib/start-server.js').
+#
+# Do NOT set functions.included_files for next/** — that conflicts with
+# @netlify/plugin-nextjs and fails with ENOENT unlink on app-dir-module.js.
 
 [build]
   command = "npm run build --workspace=admin"
@@ -14,17 +17,7 @@
 
 [build.environment]
   NODE_VERSION = "22"
-  # Ensure workspace install from repo root
   NPM_FLAGS = "--include-workspace-root"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
-
-# Include hoisted Next runtime files in the serverless function bundle
-[functions]
-  node_bundler = "nft"
-  included_files = [
-    "node_modules/next/**",
-    "apps/admin/node_modules/next/**",
-    "node_modules/next/dist/server/lib/**"
-  ]
