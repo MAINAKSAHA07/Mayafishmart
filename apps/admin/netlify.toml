@@ -1,11 +1,30 @@
-# Maya Ops — always build and package the standalone admin app.
+# Maya Ops (admin) — monorepo package under apps/admin
+# Netlify site settings (required):
+#   Base directory: (empty / repo root)
+#   Package directory: apps/admin
+#   Build command: npm run build --workspace=admin
+#   Publish directory: apps/admin/.next
+#
+# Do NOT set Base directory to apps/admin — that breaks Next module resolution
+# (Cannot find module 'next/dist/server/lib/start-server.js').
 
 [build]
-  command = "npm run build"
-  publish = ".next"
+  command = "npm run build --workspace=admin"
+  publish = "apps/admin/.next"
 
 [build.environment]
   NODE_VERSION = "22"
+  # Ensure workspace install from repo root
+  NPM_FLAGS = "--include-workspace-root"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Include hoisted Next runtime files in the serverless function bundle
+[functions]
+  node_bundler = "nft"
+  included_files = [
+    "node_modules/next/**",
+    "apps/admin/node_modules/next/**",
+    "node_modules/next/dist/server/lib/**"
+  ]
