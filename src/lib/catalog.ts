@@ -10,10 +10,14 @@ export async function getCategories(): Promise<Category[]> {
       .from("categories")
       .select("*")
       .order("sort_order");
-    if (error || !data?.length) return DEMO_CATEGORIES;
-    return data as Category[];
-  } catch {
-    return DEMO_CATEGORIES;
+    if (error) {
+      console.error("getCategories", error.message);
+      return [];
+    }
+    return (data as Category[]) ?? [];
+  } catch (err) {
+    console.error("getCategories", err);
+    return [];
   }
 }
 
@@ -25,22 +29,25 @@ export async function getProducts(categorySlug?: string): Promise<Product[]> {
   }
   try {
     const supabase = await createClient();
-    let query = supabase
+    const { data, error } = await supabase
       .from("products")
       .select("*, categories(*), inventory(*)")
       .eq("is_active", true)
       .order("name");
 
-    const { data, error } = await query;
-    if (error || !data?.length) return DEMO_PRODUCTS;
+    if (error) {
+      console.error("getProducts", error.message);
+      return [];
+    }
 
-    const products = data as Product[];
+    const products = (data as Product[]) ?? [];
     if (categorySlug) {
       return products.filter((p) => p.categories?.slug === categorySlug);
     }
     return products;
-  } catch {
-    return DEMO_PRODUCTS;
+  } catch (err) {
+    console.error("getProducts", err);
+    return [];
   }
 }
 
@@ -54,13 +61,16 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
       .from("products")
       .select("*, categories(*), inventory(*)")
       .eq("slug", slug)
+      .eq("is_active", true)
       .maybeSingle();
-    if (error || !data) {
-      return DEMO_PRODUCTS.find((p) => p.slug === slug) ?? null;
+    if (error) {
+      console.error("getProductBySlug", error.message);
+      return null;
     }
-    return data as Product;
-  } catch {
-    return DEMO_PRODUCTS.find((p) => p.slug === slug) ?? null;
+    return (data as Product) ?? null;
+  } catch (err) {
+    console.error("getProductBySlug", err);
+    return null;
   }
 }
 

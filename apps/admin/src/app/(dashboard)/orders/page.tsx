@@ -23,30 +23,27 @@ export default async function AdminOrdersPage({
 
   return (
     <div>
-      <h1 className="font-display text-3xl text-white">Orders</h1>
-      <div className="mt-4 flex flex-wrap gap-2">
+      <h1 className="font-display ops-page-title">Orders</h1>
+      <div className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
         {["", "placed", "confirmed", "ready", "picked_up", "cancelled"].map((s) => (
           <a
             key={s || "all"}
             href={s ? `/orders?status=${s}` : "/orders"}
-            className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${
-              (status || "") === s
-                ? "bg-aqua text-ocean-deep"
-                : "bg-white/10 text-foam/80 hover:bg-white/15"
-            }`}
+            data-active={(status || "") === s}
+            className="ops-chip shrink-0"
           >
             {s || "all"}
           </a>
         ))}
       </div>
 
-      <ul className="mt-6 space-y-4">
+      <ul className="mt-6 space-y-3">
         {orders.map((order) => (
           <li
             key={order.id}
             id={order.id}
-            className={`rounded-2xl bg-white/5 p-5 ring-1 ${
-              focus === order.id ? "ring-aqua" : "ring-white/10"
+            className={`ops-card ${
+              focus === order.id ? "border-aqua/60 shadow-[0_0_0_1px_rgba(53,179,239,0.45)]" : ""
             }`}
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -60,7 +57,13 @@ export default async function AdminOrdersPage({
                 <p className="text-xs text-foam/50">{order.pickup_slot}</p>
               </div>
               <div className="text-right">
-                <p className="font-semibold text-white">{formatInr(order.total_paise)}</p>
+                <p className="font-semibold text-white tabular-nums">{formatInr(order.total_paise)}</p>
+                {(order.discount_paise ?? 0) > 0 && (
+                  <p className="text-xs text-aqua">
+                    −{formatInr(order.discount_paise)}
+                    {order.coupon_code ? ` · ${order.coupon_code}` : ""}
+                  </p>
+                )}
                 <p className="text-xs text-aqua uppercase">
                   {order.status} · {order.payment_status}
                 </p>

@@ -5,7 +5,8 @@ import { useCart } from "@/lib/cart/store";
 import type { Product } from "@/lib/types";
 
 export function QtyPicker({ product, disabled }: { product: Product; disabled?: boolean }) {
-  const [qty, setQty] = useState(product.min_order_qty);
+  const min = product.min_order_qty > 0 ? product.min_order_qty : 1;
+  const [qty, setQty] = useState(min);
   const addItem = useCart((s) => s.addItem);
 
   return (
@@ -16,8 +17,8 @@ export function QtyPicker({ product, disabled }: { product: Product; disabled?: 
       <input
         id="qty"
         type="number"
-        min={product.min_order_qty}
-        step={product.unit === "kg" ? 0.25 : 1}
+        min={min}
+        step={0.5}
         value={qty}
         disabled={disabled}
         onChange={(e) => setQty(Number(e.target.value))}
@@ -25,11 +26,11 @@ export function QtyPicker({ product, disabled }: { product: Product; disabled?: 
       />
       <button
         type="button"
-        disabled={disabled}
+        disabled={disabled || !qty || qty < min}
         className="btn-secondary !py-2 text-sm disabled:opacity-50"
-        onClick={() => addItem(product, qty)}
+        onClick={() => addItem(product, qty >= min ? qty : min)}
       >
-        Add {qty} {product.unit}
+        Add {qty || min} {product.unit}
       </button>
     </div>
   );

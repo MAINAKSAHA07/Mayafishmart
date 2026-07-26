@@ -3,16 +3,20 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calcGstPaise, calcLineTotalPaise } from "@/lib/money";
+import { createCouponDeps, validateCouponForOrder } from "@/lib/coupons";
+import { resolveCustomerId } from "@/lib/guest-customer";
 import { generatePickupCode } from "@/lib/pickup";
 import { getRazorpay, isRazorpayConfigured } from "@/lib/payments/razorpay";
 
 const bodySchema = z.object({
-  items: z.array(
-    z.object({
-      productId: z.string().uuid().or(z.string().min(1)),
-      qty: z.number().positive(),
-    })
-  ).min(1),
+  items: z
+    .array(
+      z.object({
+        productId: z.string().uuid().or(z.string().min(1)),
+        qty: z.number().positive(),
+      })
+    )
+    .min(1),
   customer: z.object({
     fullName: z.string().min(2),
     email: z.string().email(),
@@ -27,6 +31,7 @@ const bodySchema = z.object({
   }),
   pickupSlot: z.string().min(3),
   paymentMethod: z.enum(["razorpay", "counter", "cod"]),
+  couponCode: z.string().optional().nullable(),
 });
 
 export async function POST(request: NextRequest) {
@@ -38,26 +43,20 @@ export async function POST(request: NextRequest) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Login required" }, { status: 401 });
-    }
+
+    const { customerId } = await resolveCustomerId({
+      userId: user?.id ?? null,
+      email: body.customer.email,
+      phone: body.customer.phone,
+      fullName: body.customer.fullName,
+    });
 
     const admin = createAdminClient();
-
-    // Save customer contact data at order time
-    await admin
-      .from("profiles")
-      .update({
-        full_name: body.customer.fullName,
-        email: body.customer.email,
-        phone: body.customer.phone,
-      })
-      .eq("id", user.id);
 
     const { data: existingAddress } = await admin
       .from("customer_addresses")
       .select("id")
-      .eq("customer_id", user.id)
+      .eq("customer_id", customerId)
       .eq("is_primary", true)
       .maybeSingle();
 
@@ -74,7 +73,7 @@ export async function POST(request: NextRequest) {
         .eq("id", existingAddress.id);
     } else {
       await admin.from("customer_addresses").insert({
-        customer_id: user.id,
+        customer_id: customerId,
         line1: body.customer.address.line1,
         line2: body.customer.address.line2 || null,
         city: body.customer.address.city,
@@ -85,19 +84,54 @@ export async function POST(request: NextRequest) {
     }
 
     const productIds = body.items.map((i) => i.productId);
+    const uuidRe =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (productIds.some((id) => !uuidRe.test(id))) {
+      return NextResponse.json(
+        {
+          error:
+            "Your cart has outdated items. Clear the cart and add products again from Today's catch.",
+        },
+        { status: 400 }
+      );
+    }
+
     const { data: products, error: productsError } = await admin
       .from("products")
       .select("*, inventory(*)")
       .in("id", productIds)
       .eq("is_active", true);
 
-    if (productsError || !products?.length) {
-      return NextResponse.json({ error: "Products unavailable" }, { status: 400 });
+    if (productsError) {
+      return NextResponse.json(
+        { error: productsError.message || "Products unavailable" },
+        { status: 400 }
+      );
+    }
+
+    if (!products?.length) {
+      return NextResponse.json(
+        {
+          error:
+            "Products unavailable. Clear the cart and add items again from Today's catch.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (products.length !== productIds.length) {
+      return NextResponse.json(
+        {
+          error:
+            "Some cart items are no longer available. Clear the cart and try again.",
+        },
+        { status: 400 }
+      );
     }
 
     const productMap = new Map(products.map((p) => [p.id, p]));
     let subtotal = 0;
-    let gstTotal = 0;
+    let preGst = 0;
     const lineItems: Array<{
       product_id: string;
       product_name: string;
@@ -124,7 +158,7 @@ export async function POST(request: NextRequest) {
       const line = calcLineTotalPaise(item.qty, product.price_paise);
       const gst = calcGstPaise(line, Number(product.gst_rate));
       subtotal += line;
-      gstTotal += gst;
+      preGst += gst;
       lineItems.push({
         product_id: product.id,
         product_name: product.name,
@@ -136,7 +170,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const total = subtotal + gstTotal;
+    const couponResult = await validateCouponForOrder(createCouponDeps(admin), {
+      code: body.couponCode,
+      customerId,
+      subtotalPaise: subtotal,
+      preDiscountGstPaise: preGst,
+    });
+    if (!couponResult.ok) {
+      return NextResponse.json({ error: couponResult.error }, { status: 400 });
+    }
+    const { summary } = couponResult;
     const pickupCode = generatePickupCode();
 
     let razorpayOrderId: string | null = null;
@@ -151,7 +194,7 @@ export async function POST(request: NextRequest) {
       }
       const rzp = getRazorpay();
       const rzOrder = await rzp.orders.create({
-        amount: total,
+        amount: summary.totalPaise,
         currency: "INR",
         receipt: pickupCode,
       });
@@ -159,7 +202,7 @@ export async function POST(request: NextRequest) {
       razorpayPayload = {
         keyId: process.env.RAZORPAY_KEY_ID!,
         orderId: rzOrder.id,
-        amount: total,
+        amount: summary.totalPaise,
       };
     }
 
@@ -167,16 +210,19 @@ export async function POST(request: NextRequest) {
       .from("orders")
       .insert({
         pickup_code: pickupCode,
-        customer_id: user.id,
+        customer_id: customerId,
         status: "placed",
         fulfillment: "pickup",
         pickup_slot: body.pickupSlot,
         payment_method: body.paymentMethod,
-        payment_status: body.paymentMethod === "razorpay" ? "pending" : "pending",
+        payment_status: "pending",
         razorpay_order_id: razorpayOrderId,
-        subtotal_paise: subtotal,
-        gst_paise: gstTotal,
-        total_paise: total,
+        subtotal_paise: summary.subtotalPaise,
+        discount_paise: summary.discountPaise,
+        gst_paise: summary.gstPaise,
+        total_paise: summary.totalPaise,
+        coupon_id: summary.coupon?.id ?? null,
+        coupon_code: summary.coupon?.code ?? null,
         customer_name: body.customer.fullName,
         customer_email: body.customer.email,
         customer_phone: body.customer.phone,
@@ -200,7 +246,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: itemsError.message }, { status: 500 });
     }
 
-    // Reserve stock
+    if (summary.coupon && summary.discountPaise > 0) {
+      const { error: redeemError } = await admin.from("coupon_redemptions").insert({
+        coupon_id: summary.coupon.id,
+        order_id: order.id,
+        customer_id: customerId,
+        discount_paise: summary.discountPaise,
+      });
+      if (redeemError) {
+        await admin.from("orders").delete().eq("id", order.id);
+        return NextResponse.json(
+          { error: redeemError.message || "Coupon could not be applied" },
+          { status: 400 }
+        );
+      }
+    }
+
     for (const item of body.items) {
       const product = productMap.get(item.productId)!;
       const inv = Array.isArray(product.inventory) ? product.inventory[0] : product.inventory;
@@ -216,20 +277,22 @@ export async function POST(request: NextRequest) {
           product_id: item.productId,
           delta: -item.qty,
           reason: "reserve",
-          actor_id: user.id,
+          actor_id: customerId,
           note: `Reserved for order ${pickupCode}`,
         });
       }
     }
 
     await admin.from("customers_meta").upsert({
-      customer_id: user.id,
+      customer_id: customerId,
       last_order_at: new Date().toISOString(),
     });
 
     return NextResponse.json({
       order,
+      pricing: summary,
       razorpay: razorpayPayload,
+      guest: !user,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Order failed";

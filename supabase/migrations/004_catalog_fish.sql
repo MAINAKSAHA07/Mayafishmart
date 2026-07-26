@@ -1,5 +1,3 @@
--- Seed / refresh Maya Fish Mart catalog (safe to re-run).
-
 -- Expand Maya Fish Mart catalog + enforce min order qtys
 -- Rohu / Catla (Katla) / Prawns → 1 kg; all other kg fish → 0.5 kg
 
@@ -115,15 +113,29 @@ on conflict (slug) do update set
   is_active = true,
   updated_at = now();
 
--- Align mins: default 1 for all items (for now)
+-- Align legacy / keyword mins
 update public.products
-set min_order_qty = 1, is_active = true, updated_at = now();
+set min_order_qty = 1, is_active = true, updated_at = now()
+where slug in ('rohu', 'katla', 'tiger-prawns', 'prawns')
+   or lower(name) like '%prawn%'
+   or lower(name) like '%rohu%'
+   or lower(name) like '%katla%'
+   or lower(name) like '%catla%';
+
+update public.products
+set min_order_qty = 0.5, updated_at = now()
+where unit = 'kg'
+  and slug not in ('rohu', 'katla', 'tiger-prawns', 'prawns')
+  and lower(name) not like '%prawn%'
+  and lower(name) not like '%rohu%'
+  and lower(name) not like '%katla%'
+  and lower(name) not like '%catla%';
 
 -- Keep white-pomfret if present (alongside new pomfret)
 update public.products
 set
   name = 'Pomfret (White)',
-  min_order_qty = 1,
+  min_order_qty = 0.5,
   is_active = true,
   updated_at = now()
 where slug = 'white-pomfret';

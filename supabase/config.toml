@@ -8,3 +8,21 @@ port = 54322
 
 [studio]
 enabled = true
+
+[auth]
+enabled = true
+# Production storefront — confirmation emails must not point at localhost
+site_url = "https://mayafishmart.netlify.app"
+additional_redirect_urls = [
+  "https://mayafishmart.netlify.app/**",
+  "https://mayafishmart.netlify.app/auth/callback",
+  "http://localhost:3000/**",
+  "http://localhost:3000/auth/callback",
+]
+enable_signup = true
+enable_anonymous_sign_ins = false
+
+[auth.email]
+enable_signup = true
+# Guests place orders without confirming; accounts can still confirm for login
+enable_confirmations = true

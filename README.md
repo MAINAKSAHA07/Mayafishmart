@@ -32,19 +32,22 @@ Permanent redirects: `/shop`, `/catalog`, `/menu` → `/catch`; `/product/:slug`
 SEO: `sitemap.xml`, `robots.txt`, Open Graph / Twitter cards, JSON-LD. Set `NEXT_PUBLIC_APP_URL` to your production storefront domain.
 
 ### Customer
-- Browse today's catch, cart, login
-- Checkout collects **name, email, phone, address** and saves them **only when ordering**
+- Browse today's catch, cart, **guest checkout** (login optional)
+- Checkout collects **name, email, phone, address** — prefills if signed in or from last guest order
 - Pickup windows, Razorpay or pay at counter
-- Order status + history
+- Order confirmation via pickup code link; signed-in users also get order history
 
 ### Backoffice (Maya Ops — separate app)
 Roles: `owner` · `manager` · `staff` · `viewer`
 
-- Dashboard, orders board, counter orders
-- Catalog + inventory movements
+- Dashboard with D3 sales charts (30-day revenue, volume, top products)
+- Orders board, counter orders, printable GST receipts
+- Catalog + inventory movements + **coupons**
 - Customers (saved checkout contact data)
 - User role assignment (owner)
-- AI insights + image stock scan (human approve before apply)
+- Image stock scan (human approve before apply)
+
+Staff open Ops at `NEXT_PUBLIC_ADMIN_URL` directly — it is **not** linked from the storefront header.
 
 ## Setup
 
@@ -83,11 +86,14 @@ npm run dev:admin        # :3001
 
 Without Supabase env vars, the storefront shows a **demo catalog** (browse-only).
 
-## Deploy (two Vercel projects)
+## Deploy (two Netlify projects)
 
-1. **Storefront** — Root Directory: `.` · Build: `npm run build` · Env: Supabase + Razorpay + `NEXT_PUBLIC_ADMIN_URL`
-2. **Admin** — Root Directory: `apps/admin` · Build: `npm run build` · Env: Supabase + OpenAI + `NEXT_PUBLIC_STOREFRONT_URL`  
-   Include `packages/shared` in the monorepo (Vercel installs from repo root when using workspaces; set “Include source files outside Root Directory” if prompted).
+1. **Storefront** — https://mayafishmart.netlify.app · filter `mayafishmart` · Root `.` · `npm run deploy:storefront`
+2. **Maya Ops** — https://mayafishmart-ops.netlify.app · filter `admin` · Base `apps/admin` · `npm run deploy:admin`
+
+Env on both sites: Supabase keys. Storefront also needs Razorpay + `NEXT_PUBLIC_ADMIN_URL`. Ops needs `NEXT_PUBLIC_STOREFRONT_URL`.
+
+Cloud deploys build from **GitHub `main`** — commit and push before triggering.
 
 ## Auth notes
 
@@ -96,9 +102,16 @@ Without Supabase env vars, the storefront shows a **demo catalog** (browse-only)
 
 ## AI notes
 
-- Insights and stock vision run in the **admin** app when `OPENAI_API_KEY` is set
-- Without a key, heuristic summaries / sample proposals are returned
+- Image stock vision runs in the **admin** app when `OPENAI_API_KEY` is set
+- Sales reporting uses **deterministic D3 charts** on the dashboard (no AI)
 - Image stock updates never auto-commit — staff must **Apply** or **Reject**
+
+## Coupons
+
+- Manage under Maya Ops → **Coupons** (owner/manager)
+- Percent or fixed ₹ off, min order, validity window, total + per-customer limits
+- Customers apply codes at checkout; discounts apply **before GST**
+- Demo seed: `FRESH10` (10% off, min ₹500)
 
 ## Project layout
 

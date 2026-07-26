@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
+    ".",
     "apps/*",
     "packages/*"
   ],
@@ -17,6 +18,12 @@
     "build:all": "npm run build:storefront && npm run build:admin",
     "start": "next start",
     "start:admin": "npm run start --workspace=admin -- --port 3001",
+    "deploy:storefront": "CI=true netlify deploy --trigger --filter mayafishmart -s 23a33c97-018a-42cf-9880-a95dfff621b8",
+    "deploy:storefront:local": "netlify deploy --build --prod --filter mayafishmart -s 23a33c97-018a-42cf-9880-a95dfff621b8",
+    "deploy:storefront:draft": "netlify deploy --build --filter mayafishmart -s 23a33c97-018a-42cf-9880-a95dfff621b8",
+    "deploy:admin": "CI=true netlify deploy --trigger --filter admin -s afec8fbf-c9b6-457b-be58-e73d8255a2e0",
+    "deploy:admin:local": "echo 'Local CLI prod deploys break Maya Ops SSR (502). Push to GitHub and use npm run deploy:admin (cloud build with base=apps/admin).' >&2; exit 1",
+    "deploy:trigger": "CI=true netlify deploy --trigger --filter mayafishmart -s 23a33c97-018a-42cf-9880-a95dfff621b8",
     "lint": "eslint",
     "lint:admin": "npm run lint --workspace=admin"
   },
@@ -34,6 +41,7 @@
     "zustand": "^5.0.5"
   },
   "devDependencies": {
+    "@netlify/plugin-nextjs": "^5.15.12",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

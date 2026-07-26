@@ -67,7 +67,7 @@ export function InventoryAdjustForm({
       <button
         type="submit"
         disabled={loading}
-        className="rounded-full bg-aqua px-4 py-2 text-sm font-semibold text-ocean-deep"
+        className="pressable min-h-11 w-full rounded-full bg-aqua px-4 py-2.5 text-sm font-semibold text-ocean-deep sm:w-auto"
       >
         {loading ? "…" : "Apply"}
       </button>

@@ -35,9 +35,9 @@ function LoginForm() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-16">
+    <div className="safe-x mx-auto flex min-h-dvh max-w-md flex-col justify-center py-16">
       <Logo size={64} priority />
-      <h1 className="mt-5 font-display text-3xl text-white">Staff login</h1>
+      <h1 className="font-display ops-page-title mt-5">Staff login</h1>
       <p className="mt-2 text-sm text-foam/70">
         Sign in with your staff email to open Maya Ops.
       </p>

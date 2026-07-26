@@ -14,7 +14,7 @@ export default async function AdminUsersPage() {
 
   return (
     <div>
-      <h1 className="font-display text-3xl text-white">Users & roles</h1>
+      <h1 className="font-display ops-page-title">Users & roles</h1>
       <p className="mt-1 text-sm text-foam/60">
         Invite staff by email — they must sign up first, then assign a role here.
       </p>

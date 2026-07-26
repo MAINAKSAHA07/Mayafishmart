@@ -1,0 +1,12 @@
+# Maya Fish Mart — customer storefront (primary site)
+# Deploy root: repository root (NOT apps/admin)
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

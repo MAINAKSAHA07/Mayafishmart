@@ -21,11 +21,13 @@ export const metadata: Metadata = {
   },
   description: "Maya Fish Mart backoffice — orders, inventory, and AI ops.",
   robots: { index: false, follow: false },
-  icons: { icon: "/logo.png", apple: "/logo.png" },
 };
 
 export const viewport = {
   themeColor: "#0b2a72",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover" as const,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

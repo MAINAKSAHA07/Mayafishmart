@@ -3,13 +3,25 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/demo-data";
 import { Logo } from "@/components/ui/Logo";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useState } from "react";
+
+function emailRedirectTo(nextPath: string) {
+  const base =
+    typeof window !== "undefined"
+      ? window.location.origin
+      : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const next = nextPath.startsWith("/") ? nextPath : "/account";
+  return `${base.replace(/\/$/, "")}/auth/callback?next=${encodeURIComponent(next)}`;
+}
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/account";
+  const guestHref = next.startsWith("/") && next !== "/login" ? next : "/checkout";
+  const cameFromCheckout = next === "/checkout" || next.startsWith("/checkout");
   const [mode, setMode] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,7 +47,10 @@ function LoginForm() {
       const { error: upError } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { role: "customer" } },
+        options: {
+          data: { role: "customer" },
+          emailRedirectTo: emailRedirectTo(next),
+        },
       });
       if (upError) {
         setError(upError.message);
@@ -93,13 +108,22 @@ function LoginForm() {
   return (
     <div className="mx-auto max-w-md px-4 py-14 sm:px-6 sm:py-20">
       <Logo size={64} priority />
-      <h1 className="mt-5 text-[clamp(2rem,5vw,2.6rem)] text-ocean-deep">Customer login</h1>
+      <h1 className="mt-5 text-[clamp(2rem,5vw,2.6rem)] text-ocean-deep">
+        {cameFromCheckout ? "Almost there" : "Sign in"}
+      </h1>
       <p className="mt-3 text-[0.975rem] leading-relaxed text-muted">
-        Sign in to place a pickup order. We save your email, phone, and address only when you
-        checkout.
+        {cameFromCheckout
+          ? "No account needed to place a pickup order. Continue as guest, or sign in to autofill."
+          : "Sign in for order history — or continue as guest to checkout."}
       </p>
 
+      <Link href={guestHref} className="btn-primary mt-6 flex w-full justify-center !py-3.5 text-[1rem]">
+        Continue as guest
+      </Link>
+      <p className="mt-3 text-center text-sm text-muted">Login is optional</p>
+
       <div className="surface mt-8 p-5 sm:p-6">
+        <p className="mb-4 text-sm font-semibold text-ink">Or sign in</p>
         <div className="flex gap-2" role="tablist" aria-label="Login method">
           <button
             type="button"
@@ -152,7 +176,7 @@ function LoginForm() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            <button type="submit" className="btn-primary w-full" disabled={loading}>
+            <button type="submit" className="btn-ghost w-full" disabled={loading}>
               {loading ? "Please wait…" : "Sign in / Sign up"}
             </button>
           </form>
@@ -190,7 +214,7 @@ function LoginForm() {
                 />
               </div>
             )}
-            <button type="submit" className="btn-primary w-full" disabled={loading}>
+            <button type="submit" className="btn-ghost w-full" disabled={loading}>
               {loading ? "Please wait…" : otpSent ? "Verify OTP" : "Send OTP"}
             </button>
           </form>

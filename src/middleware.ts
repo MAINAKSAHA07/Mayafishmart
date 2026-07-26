@@ -17,7 +17,9 @@ export async function middleware(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
 
-  if ((path === "/checkout" || path === "/account" || path.startsWith("/orders/")) && !user) {
+  // Checkout is open to guests. Account history still needs login.
+  // Order detail can be opened with ?pickup=CODE without a session.
+  if (path === "/account" && !user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", path);
@@ -28,5 +30,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/checkout", "/account", "/orders/:path*"],
+  matcher: ["/account", "/checkout", "/orders/:path*"],
 };

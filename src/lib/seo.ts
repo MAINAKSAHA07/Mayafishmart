@@ -7,8 +7,12 @@ export const SITE_DESCRIPTION =
 
 export function getSiteUrl() {
   const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  if (fromEnv && !fromEnv.includes("localhost")) return fromEnv;
+  // Netlify / common hosts
+  const netlify = process.env.URL || process.env.DEPLOY_PRIME_URL;
+  if (netlify) return netlify.replace(/\/$/, "");
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL.replace(/\/$/, "")}`;
   if (fromEnv) return fromEnv;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return "http://localhost:3000";
 }
 

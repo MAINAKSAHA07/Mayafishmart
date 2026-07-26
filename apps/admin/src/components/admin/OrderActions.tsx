@@ -19,31 +19,11 @@ export function OrderActions({ order }: { order: Order }) {
     router.refresh();
   }
 
-  function printSlip() {
-    const w = window.open("", "_blank", "width=420,height=640");
-    if (!w) return;
-    w.document.write(`
-      <html><head><title>Pickup ${order.pickup_code}</title>
-      <style>
-        body{font-family:system-ui,-apple-system,sans-serif;padding:28px;color:#12263a}
-        h1{font-size:22px;letter-spacing:-0.02em;margin:0 0 12px}
-        .code{font-size:40px;letter-spacing:0.12em;font-weight:700;margin:8px 0 16px}
-        p{margin:6px 0;line-height:1.45}
-      </style>
-      </head><body>
-      <h1>Maya Fish Mart</h1>
-      <p class="code">${order.pickup_code}</p>
-      <p>${order.customer_name}<br/>${order.customer_phone}</p>
-      <p>${order.pickup_slot}</p>
-      <p>Total: ₹${(order.total_paise / 100).toFixed(2)} · ${order.payment_method} / ${order.payment_status}</p>
-      <script>window.print()</script>
-      </body></html>
-    `);
-    w.document.close();
+  function printReceipt() {
+    window.open(`/receipt/${order.id}?print=1`, "_blank", "noopener,noreferrer");
   }
 
-  const btn =
-    "pressable rounded-full px-3.5 py-1.5 text-xs font-semibold tracking-wide disabled:opacity-50";
+  const btn = "ops-action disabled:opacity-50";
 
   return (
     <div className="mt-4 flex flex-wrap gap-2">
@@ -99,10 +79,10 @@ export function OrderActions({ order }: { order: Order }) {
       )}
       <button
         type="button"
-        onClick={printSlip}
+        onClick={printReceipt}
         className={`${btn} text-foam/80 ring-1 ring-white/20`}
       >
-        Print slip
+        Print receipt
       </button>
     </div>
   );

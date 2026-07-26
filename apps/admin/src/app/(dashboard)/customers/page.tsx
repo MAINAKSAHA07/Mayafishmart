@@ -39,7 +39,7 @@ export default async function AdminCustomersPage() {
 
   return (
     <div>
-      <h1 className="font-display text-3xl text-white">Customers</h1>
+      <h1 className="font-display ops-page-title">Customers</h1>
       <p className="mt-1 text-sm text-foam/60">
         Contact details saved from checkout (email, phone, address)
       </p>

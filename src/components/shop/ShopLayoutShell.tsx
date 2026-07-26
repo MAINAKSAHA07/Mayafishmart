@@ -54,21 +54,13 @@ export default function ShopLayoutShell({
                 <Link href="/account" className="nav-hit">
                   Orders
                 </Link>
-                {["owner", "manager", "staff", "viewer"].includes(profile.role) && (
-                  <a
-                    href={process.env.NEXT_PUBLIC_ADMIN_URL || "http://localhost:3001"}
-                    className="nav-hit text-aqua"
-                  >
-                    Ops
-                  </a>
-                )}
                 <span className="ml-1 hidden sm:inline">
                   <LogoutButton />
                 </span>
               </>
             ) : (
-              <Link href="/login" className="btn-primary ml-1 !px-4 !py-2 text-sm">
-                Login
+              <Link href="/login" className="nav-hit ml-1">
+                Sign in
               </Link>
             )}
           </nav>

@@ -12,7 +12,7 @@ export default async function CounterOrderPage() {
 
   return (
     <div>
-      <h1 className="font-display text-3xl text-white">Counter order</h1>
+      <h1 className="font-display ops-page-title">Counter order</h1>
       <p className="mt-1 text-sm text-foam/60">Walk-in sale — pay at counter</p>
       <CounterOrderForm products={(data as Product[] | null) ?? []} />
     </div>

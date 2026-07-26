@@ -47,10 +47,6 @@ export const metadata: Metadata = {
     email: true,
     address: true,
   },
-  icons: {
-    icon: [{ url: "/logo.png", type: "image/png" }],
-    apple: [{ url: "/logo.png", type: "image/png" }],
-  },
   ...buildMetadata({
     path: "/",
     description: SITE_DESCRIPTION,

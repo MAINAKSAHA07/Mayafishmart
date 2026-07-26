@@ -52,8 +52,8 @@ export default async function HomePage() {
             <Link href="/catch" className="btn-primary">
               Shop today&apos;s catch
             </Link>
-            <Link href="/login" className="btn-ghost">
-              Customer login
+            <Link href="/cart" className="btn-ghost">
+              View cart
             </Link>
           </RiseIn>
         </div>
