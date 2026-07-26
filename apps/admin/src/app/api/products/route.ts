@@ -3,13 +3,15 @@ import { createClient } from "@mayafishmart/shared/supabase/server";
 import { createAdminClient } from "@mayafishmart/shared/supabase/admin";
 import { MANAGER_ROLES } from "@mayafishmart/shared/types";
 import { rupeesToPaise } from "@mayafishmart/shared/money";
+import { slugify } from "@mayafishmart/shared/slug";
+import { defaultMinOrderQty } from "@mayafishmart/shared/min-order";
 
-export async function POST(request: NextRequest) {
+async function requireManagerUser() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -17,33 +19,61 @@ export async function POST(request: NextRequest) {
     .eq("id", user.id)
     .single();
   if (!profile || !MANAGER_ROLES.includes(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
+  return { user };
+}
+
+async function uniqueSlug(admin: ReturnType<typeof createAdminClient>, base: string, excludeId?: string) {
+  let candidate = base || `product-${Date.now()}`;
+  let n = 2;
+  for (;;) {
+    const { data } = await admin.from("products").select("id").eq("slug", candidate).maybeSingle();
+    if (!data || (excludeId && data.id === excludeId)) return candidate;
+    candidate = `${base}-${n}`;
+    n += 1;
+  }
+}
+
+async function uploadImage(
+  admin: ReturnType<typeof createAdminClient>,
+  image: File | null,
+  slug: string
+) {
+  if (!image || image.size <= 0) return null;
+  const path = `products/${slug}-${Date.now()}.${image.name.split(".").pop() || "jpg"}`;
+  const buffer = Buffer.from(await image.arrayBuffer());
+  const { error: uploadError } = await admin.storage
+    .from("product-images")
+    .upload(path, buffer, { contentType: image.type, upsert: true });
+  if (uploadError) return null;
+  const { data } = admin.storage.from("product-images").getPublicUrl(path);
+  return data.publicUrl;
+}
+
+export async function POST(request: NextRequest) {
+  const gate = await requireManagerUser();
+  if ("error" in gate && gate.error) return gate.error;
+  const user = gate.user!;
 
   const form = await request.formData();
-  const name = String(form.get("name") || "");
-  const slug = String(form.get("slug") || "").toLowerCase().replace(/\s+/g, "-");
+  const name = String(form.get("name") || "").trim();
+  if (!name) return NextResponse.json({ error: "Name is required" }, { status: 400 });
+
+  const slug = await uniqueSlug(
+    createAdminClient(),
+    slugify(String(form.get("slug") || name))
+  );
   const category_id = String(form.get("category_id") || "") || null;
   const price_rupees = Number(form.get("price_rupees") || 0);
   const unit = String(form.get("unit") || "kg");
   const description = String(form.get("description") || "");
   const qty_on_hand = Number(form.get("qty_on_hand") || 0);
   const image = form.get("image") as File | null;
+  const is_active = String(form.get("is_active") || "true") !== "false";
 
   const admin = createAdminClient();
-  let image_url: string | null = null;
-
-  if (image && image.size > 0) {
-    const path = `products/${slug}-${Date.now()}.${image.name.split(".").pop() || "jpg"}`;
-    const buffer = Buffer.from(await image.arrayBuffer());
-    const { error: uploadError } = await admin.storage
-      .from("product-images")
-      .upload(path, buffer, { contentType: image.type, upsert: true });
-    if (!uploadError) {
-      const { data } = admin.storage.from("product-images").getPublicUrl(path);
-      image_url = data.publicUrl;
-    }
-  }
+  const image_url = await uploadImage(admin, image, slug);
 
   const { data: product, error } = await admin
     .from("products")
@@ -55,9 +85,9 @@ export async function POST(request: NextRequest) {
       unit,
       description,
       image_url,
-      is_active: true,
+      is_active,
       gst_rate: 5,
-      min_order_qty: unit === "kg" ? 0.5 : 1,
+      min_order_qty: defaultMinOrderQty(name || slug, unit),
     })
     .select("*")
     .single();
@@ -80,6 +110,61 @@ export async function POST(request: NextRequest) {
     actor_id: user.id,
     note: "Initial stock",
   });
+
+  return NextResponse.json({ product });
+}
+
+export async function PATCH(request: NextRequest) {
+  const gate = await requireManagerUser();
+  if ("error" in gate && gate.error) return gate.error;
+
+  const form = await request.formData();
+  const id = String(form.get("id") || "");
+  if (!id) return NextResponse.json({ error: "Product id required" }, { status: 400 });
+
+  const name = String(form.get("name") || "").trim();
+  if (!name) return NextResponse.json({ error: "Name is required" }, { status: 400 });
+
+  const admin = createAdminClient();
+  const { data: existing } = await admin.from("products").select("id, slug").eq("id", id).maybeSingle();
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  // Keep existing slug unless name changes enough that client sent a new slug intent.
+  // Auto-regen only when slug field is empty / omitted — otherwise use provided (still sanitized).
+  const rawSlug = String(form.get("slug") || "").trim();
+  const slug = await uniqueSlug(admin, slugify(rawSlug || name), id);
+
+  const category_id = String(form.get("category_id") || "") || null;
+  const price_rupees = Number(form.get("price_rupees") || 0);
+  const unit = String(form.get("unit") || "kg");
+  const description = String(form.get("description") || "");
+  const is_active = String(form.get("is_active") || "true") !== "false";
+  const image = form.get("image") as File | null;
+
+  const patch: Record<string, unknown> = {
+    name,
+    slug,
+    category_id,
+    price_paise: rupeesToPaise(price_rupees),
+    unit,
+    description,
+    is_active,
+    min_order_qty: defaultMinOrderQty(name || slug, unit),
+  };
+
+  const image_url = await uploadImage(admin, image, slug);
+  if (image_url) patch.image_url = image_url;
+
+  const { data: product, error } = await admin
+    .from("products")
+    .update(patch)
+    .eq("id", id)
+    .select("*")
+    .single();
+
+  if (error || !product) {
+    return NextResponse.json({ error: error?.message || "Failed" }, { status: 500 });
+  }
 
   return NextResponse.json({ product });
 }

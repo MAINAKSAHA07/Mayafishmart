@@ -2,12 +2,15 @@
   "name": "@mayafishmart/shared",
   "version": "0.1.0",
   "private": true,
+  "description": "Internal shared library — not a Netlify site. Deploy storefront with: npm run deploy:storefront",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
     "./types": "./src/types.ts",
     "./money": "./src/money.ts",
+    "./coupons": "./src/coupons.ts",
+    "./slug": "./src/slug.ts",
     "./pickup": "./src/pickup.ts",
     "./auth": "./src/auth.ts",
     "./auth-owner": "./src/auth-owner.ts",
@@ -15,7 +18,8 @@
     "./supabase/server": "./src/supabase/server.ts",
     "./supabase/admin": "./src/supabase/admin.ts",
     "./supabase/middleware": "./src/supabase/middleware.ts",
-    "./config": "./src/config.ts"
+    "./config": "./src/config.ts",
+    "./min-order": "./src/min-order.ts"
   },
   "peerDependencies": {
     "@supabase/ssr": "^0.6.1",
@@ -23,5 +27,10 @@
     "date-fns": "^4.1.0",
     "next": "^16.0.0",
     "react": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    }
   }
 }
