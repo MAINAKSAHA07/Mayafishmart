@@ -99,11 +99,31 @@ export function StockScanPanel({
               </p>
             </div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={scan.image_path}
-              alt="Stock scan"
-              className="mt-3 max-h-56 w-full max-w-full rounded-xl object-cover"
-            />
+            {scan.image_path && !scan.image_purged_at ? (
+              <img
+                src={scan.image_path}
+                alt="Stock scan"
+                className="mt-3 max-h-56 w-full max-w-full rounded-xl object-cover"
+              />
+            ) : (
+              <p className="mt-3 rounded-xl bg-white/5 px-3 py-6 text-center text-sm text-foam/45">
+                Image removed
+                {scan.status === "rejected"
+                  ? " (rejected images delete after 24h)"
+                  : scan.status === "applied"
+                    ? " (applied images delete after 7 days)"
+                    : ""}
+              </p>
+            )}
+            {scan.image_expires_at && !scan.image_purged_at && scan.status !== "pending_review" && (
+              <p className="mt-2 text-[0.7rem] text-foam/40">
+                Image deletes{" "}
+                {new Date(scan.image_expires_at).toLocaleString("en-IN", {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+              </p>
+            )}
             <ul className="mt-4 space-y-2 text-sm">
               {typeof (scan.raw_ai_json as { source?: string } | null)?.source === "string" && (
                 <li className="text-xs tracking-wide text-aqua uppercase">

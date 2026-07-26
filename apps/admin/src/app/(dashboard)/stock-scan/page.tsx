@@ -1,9 +1,17 @@
 import { createClient } from "@mayafishmart/shared/supabase/server";
 import { StockScanPanel } from "@/components/admin/StockScanPanel";
 import type { Product, StockScan } from "@mayafishmart/shared/types";
+import {
+  purgeExpiredStockScanImages,
+  signStockScanImage,
+} from "@/lib/stock-scan-images";
 
 export default async function StockScanPage() {
   const supabase = await createClient();
+
+  // Lazy retention: rejected images after 24h, applied after 7d
+  await purgeExpiredStockScanImages(40);
+
   const [{ data: scans }, { data: products }] = await Promise.all([
     supabase
       .from("stock_scans")
@@ -13,14 +21,31 @@ export default async function StockScanPage() {
     supabase.from("products").select("id, name, unit").eq("is_active", true).order("name"),
   ]);
 
+  const rows = (scans as StockScan[] | null) ?? [];
+  const withUrls: StockScan[] = await Promise.all(
+    rows.map(async (scan) => {
+      if (scan.image_purged_at) {
+        return { ...scan, image_path: "" };
+      }
+      const url = await signStockScanImage(
+        scan.image_path,
+        scan.storage_path,
+        scan.image_purged_at,
+      );
+      return { ...scan, image_path: url || scan.image_path };
+    }),
+  );
+
   return (
     <div>
-      <h1 className="font-display text-3xl text-white">Image stock update</h1>
+      <h1 className="font-display ops-page-title">Image stock update</h1>
       <p className="mt-1 text-sm text-foam/60">
-        Upload a tray/crate photo — AI proposes matches. You approve before stock changes.
+        Photo of trays, or a handwritten / printed stock list — AI reads and matches the catalog.
+        You approve before stock changes. Rejected images are deleted after 24 hours; applied ones
+        after 7 days.
       </p>
       <StockScanPanel
-        scans={(scans as StockScan[] | null) ?? []}
+        scans={withUrls}
         products={(products as Pick<Product, "id" | "name" | "unit">[] | null) ?? []}
       />
     </div>

@@ -12,6 +12,7 @@ export type InventoryReason =
   | "reserve"
   | "release";
 export type ScanStatus = "pending_review" | "applied" | "rejected";
+export type CouponType = "percent" | "fixed";
 
 export interface Profile {
   id: string;
@@ -79,8 +80,11 @@ export interface Order {
   razorpay_order_id: string | null;
   razorpay_payment_id: string | null;
   subtotal_paise: number;
+  discount_paise: number;
   gst_paise: number;
   total_paise: number;
+  coupon_id: string | null;
+  coupon_code: string | null;
   customer_name: string;
   customer_email: string;
   customer_phone: string;
@@ -121,6 +125,23 @@ export interface CartItem {
   minOrderQty: number;
 }
 
+export interface Coupon {
+  id: string;
+  code: string;
+  type: CouponType;
+  value: number;
+  min_subtotal_paise: number;
+  starts_at: string | null;
+  ends_at: string | null;
+  max_uses: number | null;
+  max_uses_per_customer: number | null;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  redemption_count?: number;
+}
+
 export interface AiInsight {
   id: string;
   type: "sales" | "stock";
@@ -133,6 +154,9 @@ export interface AiInsight {
 export interface StockScan {
   id: string;
   image_path: string;
+  storage_path?: string | null;
+  image_expires_at?: string | null;
+  image_purged_at?: string | null;
   raw_ai_json: Record<string, unknown> | null;
   proposed_updates: Array<{
     product_id?: string;

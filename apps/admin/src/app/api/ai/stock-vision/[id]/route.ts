@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@mayafishmart/shared/supabase/server";
 import { createAdminClient } from "@mayafishmart/shared/supabase/admin";
 import { WRITE_STAFF_ROLES } from "@mayafishmart/shared/types";
+import { imageExpiresAtForStatus } from "@/lib/stock-scan-images";
 
 export async function PATCH(
   request: NextRequest,
@@ -32,12 +33,14 @@ export async function PATCH(
   }
 
   if (action === "rejected") {
+    const reviewedAt = new Date();
     const { data, error } = await admin
       .from("stock_scans")
       .update({
         status: "rejected",
         reviewed_by: user.id,
-        reviewed_at: new Date().toISOString(),
+        reviewed_at: reviewedAt.toISOString(),
+        image_expires_at: imageExpiresAtForStatus("rejected", reviewedAt),
       })
       .eq("id", id)
       .select("*")
@@ -82,16 +85,18 @@ export async function PATCH(
         reason: "image_scan",
         actor_id: user.id,
         note: `Applied stock scan ${id}`,
-        image_path: scan.image_path,
+        image_path: scan.storage_path || scan.image_path,
       });
     }
 
+    const reviewedAt = new Date();
     const { data, error } = await admin
       .from("stock_scans")
       .update({
         status: "applied",
         reviewed_by: user.id,
-        reviewed_at: new Date().toISOString(),
+        reviewed_at: reviewedAt.toISOString(),
+        image_expires_at: imageExpiresAtForStatus("applied", reviewedAt),
       })
       .eq("id", id)
       .select("*")

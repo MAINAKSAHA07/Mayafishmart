@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
     .from("stock-scans")
     .createSignedUrl(path, 60 * 60 * 24 * 7);
 
-  const imageUrl = signed?.signedUrl || path;
+  const displayUrl = signed?.signedUrl || path;
 
   const { data: products } = await admin
     .from("products")
@@ -270,7 +270,8 @@ export async function POST(request: NextRequest) {
   const { data: scan, error } = await admin
     .from("stock_scans")
     .insert({
-      image_path: imageUrl,
+      image_path: displayUrl,
+      storage_path: path,
       raw_ai_json,
       proposed_updates: proposed,
       status: "pending_review",
