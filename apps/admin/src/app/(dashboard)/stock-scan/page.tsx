@@ -40,9 +40,9 @@ export default async function StockScanPage() {
     <div>
       <h1 className="font-display ops-page-title">Image stock update</h1>
       <p className="mt-1 text-sm text-foam/60">
-        Photo of trays, or a handwritten / printed stock list — AI reads and matches the catalog.
-        You approve before stock changes. Rejected images are deleted after 24 hours; applied ones
-        after 7 days.
+        Write notes as <span className="text-foam/80">qty → product → price/kg</span> (e.g.{" "}
+        <span className="text-foam/80">40kg Katla Rs 240/kg</span>). Rejected images delete after 24h;
+        applied after 7 days.
       </p>
       <StockScanPanel
         scans={withUrls}
