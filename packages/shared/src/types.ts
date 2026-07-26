@@ -180,6 +180,7 @@ export interface StockScan {
     product_id?: string;
     product_name: string;
     suggested_qty: number;
+    suggested_price_rupees?: number | null;
     confidence: number;
     notes?: string;
   }>;

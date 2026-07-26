@@ -155,8 +155,14 @@ export function StockScanPanel({
                 )}
               {scan.proposed_updates.map((u, idx) => (
                 <li key={`${u.product_name}-${idx}`} className="text-foam/80">
-                  <span className="text-white">{u.product_name}</span> → set qty ≈{" "}
-                  {u.suggested_qty}{" "}
+                  <span className="text-white">{u.product_name}</span> → qty ≈{" "}
+                  {u.suggested_qty}
+                  {u.suggested_price_rupees != null && u.suggested_price_rupees > 0 ? (
+                    <>
+                      {" "}
+                      · price ₹{u.suggested_price_rupees}/kg
+                    </>
+                  ) : null}{" "}
                   <span className="text-foam/50">
                     ({Math.round(u.confidence * 100)}%
                     {u.notes ? ` · ${u.notes}` : ""})

@@ -7,6 +7,8 @@ type ProposedUpdate = {
   product_id: string;
   product_name: string;
   suggested_qty: number;
+  /** Catalog unit price in rupees (from ₹/kg on the note). */
+  suggested_price_rupees?: number | null;
   confidence: number;
   notes: string;
 };
@@ -18,20 +20,20 @@ const SYSTEM_PROMPT = `You are inventory vision for Maya Fish Mart (India fish s
 STRICT RULES — never hallucinate:
 - ONLY return products you can see or read in THIS image.
 - If the image mentions one fish, return at most that one match. Do NOT invent other catalog items.
-- Never invent quantities.
+- Never invent quantities or prices.
 
 SHOP HANDWRITING PATTERN (most common — follow this):
   <quantity> <product> <price>/kg
 Examples:
-- "40kg Katla Rs 240/kg" → Katla stock qty = 40 (₹240 is PRICE, not stock)
-- "12 Rohu Rs 200/kg" → Rohu qty = 12
-- "5.5 prawns 450/kg" → Prawns qty = 5.5
-The FIRST number is always on-hand quantity. The number before "/kg" (often with Rs/₹) is PRICE — never use it as suggested_qty.
+- "40kg Katla Rs 240/kg" → qty=40, product=Katla, suggested_price_rupees=240
+- "12 Rohu Rs 200/kg" → qty=12, Rohu, price=200
+- "5.5 prawns 450/kg" → qty=5.5, Prawns, price=450
+The FIRST number is on-hand quantity. The number before "/kg" (often with Rs/₹) is the catalog PRICE in rupees per kg — put it in suggested_price_rupees, NOT in suggested_qty.
 OCR may add junk before the qty (e.g. "0-40kg" or "O-40kg") — use 40 as qty.
 
 Also accept:
-- Qty with product: "Katla 40kg", "Rohu = 12"
-- Tray photos: estimate only fish you see
+- Qty with product, no price: "Katla 40kg", "Rohu = 12" → omit suggested_price_rupees
+- Tray photos: estimate only fish you see (qty only)
 - Price-only notes with NO leading quantity (e.g. "Rohu - 240/kg") → updates: [] but still set transcribed_text
 
 Handwriting: Bengali/Hindi/English OK (Rui→Rohu, Katla→Catla, Ilish→Hilsa).
@@ -42,7 +44,14 @@ Return ONLY JSON:
   "source": "handwritten" | "photo" | "printed" | "mixed",
   "transcribed_text": "exact text you read",
   "updates": [
-    { "product_id": "...", "product_name": "...", "suggested_qty": number, "confidence": number, "notes": "..." }
+    {
+      "product_id": "...",
+      "product_name": "...",
+      "suggested_qty": number,
+      "suggested_price_rupees": number | null,
+      "confidence": number,
+      "notes": "..."
+    }
   ]
 }`;
 
@@ -85,7 +94,13 @@ function extractPricePerKg(text: string): number | null {
   const m = text.match(/(?:rs\.?|₹|inr)?\s*(\d+(?:\.\d+)?)\s*\/\s*kg\b/i);
   if (!m) return null;
   const n = Number(m[1]);
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function normalizePriceRupees(value: unknown, fallback: number | null = null): number | null {
+  const n = Number(value);
+  if (Number.isFinite(n) && n > 0) return Math.round(n * 100) / 100;
+  return fallback;
 }
 
 /** Parse shop notes: qty first, then product, then optional price/kg. */
@@ -101,7 +116,6 @@ function parseShopHandwriting(transcribed: string, catalog: CatalogRow[]): Propo
     if (!line) continue;
     const price = extractPricePerKg(line);
 
-    // "0-40kg Katla Rs 240/kg" | "40kg Katla Rs 240/kg" | "40 Katla 240/kg"
     const m = line.match(
       /^(?:[o0q]-)?(\d+(?:\.\d+)?)\s*(?:kg|kgs)?\s+([A-Za-z][A-Za-z0-9\s().'-]+?)(?=\s+(?:rs\.?|₹|inr)?\s*\d|\s*$)/i,
     );
@@ -119,8 +133,12 @@ function parseShopHandwriting(transcribed: string, catalog: CatalogRow[]): Propo
       product_id: matched.id,
       product_name: matched.name,
       suggested_qty: Math.round(qty * 100) / 100,
+      suggested_price_rupees: price,
       confidence: 0.85,
-      notes: `Parsed shop note (qty → product → price)${price != null ? `; price ₹${price}/kg ignored` : ""}`,
+      notes:
+        price != null
+          ? `Parsed shop note (qty → product → price ₹${price}/kg)`
+          : "Parsed shop note (qty → product)",
     });
   }
   return out;
@@ -130,7 +148,7 @@ function coerceUpdates(raw: unknown, catalog: CatalogRow[]): ProposedUpdate[] {
   if (!raw || typeof raw !== "object") return [];
   const obj = raw as { updates?: unknown; transcribed_text?: unknown };
   const transcribed = String(obj.transcribed_text ?? "");
-  const price = extractPricePerKg(transcribed);
+  const transcribedPrice = extractPricePerKg(transcribed);
   const updates = obj.updates;
 
   const out: ProposedUpdate[] = [];
@@ -144,7 +162,7 @@ function coerceUpdates(raw: unknown, catalog: CatalogRow[]): ProposedUpdate[] {
       const qty = Number(r.suggested_qty);
       const notes = String(r.notes ?? "");
       if (!name || !Number.isFinite(qty) || qty < 0) continue;
-      if (price != null && qty === price) continue;
+      if (transcribedPrice != null && qty === transcribedPrice) continue;
 
       const byId =
         typeof r.product_id === "string"
@@ -154,10 +172,15 @@ function coerceUpdates(raw: unknown, catalog: CatalogRow[]): ProposedUpdate[] {
       if (!matched || seen.has(matched.id)) continue;
       seen.add(matched.id);
 
+      const priceFromRow = normalizePriceRupees(r.suggested_price_rupees);
+      const priceFromNotes = extractPricePerKg(`${notes} ${transcribed}`);
+      const price = priceFromRow ?? priceFromNotes ?? transcribedPrice;
+
       out.push({
         product_id: matched.id,
         product_name: matched.name,
         suggested_qty: Math.round(qty * 100) / 100,
+        suggested_price_rupees: price,
         confidence: Math.min(1, Math.max(0, Number(r.confidence) || 0.5)),
         notes: notes.slice(0, 240),
       });
@@ -166,6 +189,15 @@ function coerceUpdates(raw: unknown, catalog: CatalogRow[]): ProposedUpdate[] {
 
   if (!out.length && transcribed.trim()) {
     return parseShopHandwriting(transcribed, catalog);
+  }
+
+  // Enrich missing prices from transcription when model returned qty only
+  if (transcribedPrice != null) {
+    return out.map((u) =>
+      u.suggested_price_rupees != null
+        ? u
+        : { ...u, suggested_price_rupees: transcribedPrice },
+    );
   }
   return out;
 }
@@ -248,7 +280,7 @@ export async function POST(request: NextRequest) {
               content: [
                 {
                   type: "text",
-                  text: `Shop note pattern is: quantity, then product, then price/kg. Read ONLY this image.\nCatalog JSON:\n${JSON.stringify(catalog)}`,
+                  text: `Shop note pattern: quantity, then product, then price/kg. Capture both qty and price.\nCatalog JSON:\n${JSON.stringify(catalog)}`,
                 },
                 {
                   type: "image_url",
