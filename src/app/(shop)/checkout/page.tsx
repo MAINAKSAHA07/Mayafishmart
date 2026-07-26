@@ -251,7 +251,7 @@ export default function CheckoutPage() {
       <div className="mx-auto max-w-xl px-4 py-24 text-center">
         <h1 className="text-[clamp(1.85rem,4vw,2.4rem)] text-ocean-deep">Nothing to checkout</h1>
         <p className="mt-2 text-muted">Add something from today&apos;s catch first.</p>
-        <Link href="/#catch" className="btn-primary mt-8 inline-flex">
+        <Link href="/catch" className="btn-primary mt-8 inline-flex">
           Browse catch
         </Link>
       </div>

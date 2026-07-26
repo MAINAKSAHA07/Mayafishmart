@@ -24,7 +24,7 @@ export default function CartPage() {
       <div className="mx-auto max-w-3xl px-4 py-24 text-center sm:px-6">
         <h1 className="text-[clamp(2rem,5vw,2.75rem)] text-ocean-deep">Your cart is empty</h1>
         <p className="mt-3 text-muted">Add something fresh from today&apos;s catch.</p>
-        <Link href="/#catch" className="btn-primary mt-8 inline-flex">
+        <Link href="/catch" className="btn-primary mt-8 inline-flex">
           Browse catch
         </Link>
       </div>

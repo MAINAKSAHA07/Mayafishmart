@@ -160,9 +160,10 @@ export const DEMO_PRODUCTS: Product[] = [
 ];
 
 export function isSupabaseConfigured() {
-  return Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
-      !process.env.NEXT_PUBLIC_SUPABASE_URL.includes("your-project")
-  );
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anon) return false;
+  if (url.includes("your-project")) return false;
+  if (anon.includes("your-anon-key") || anon.length < 40) return false;
+  return true;
 }

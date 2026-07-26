@@ -1,0 +1,27 @@
+{
+  "name": "@mayafishmart/shared",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./money": "./src/money.ts",
+    "./pickup": "./src/pickup.ts",
+    "./auth": "./src/auth.ts",
+    "./auth-owner": "./src/auth-owner.ts",
+    "./supabase/client": "./src/supabase/client.ts",
+    "./supabase/server": "./src/supabase/server.ts",
+    "./supabase/admin": "./src/supabase/admin.ts",
+    "./supabase/middleware": "./src/supabase/middleware.ts",
+    "./config": "./src/config.ts"
+  },
+  "peerDependencies": {
+    "@supabase/ssr": "^0.6.1",
+    "@supabase/supabase-js": "^2.49.8",
+    "date-fns": "^4.1.0",
+    "next": "^16.0.0",
+    "react": "^19.0.0"
+  }
+}

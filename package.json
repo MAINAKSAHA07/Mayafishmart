@@ -2,12 +2,23 @@
   "name": "mayafishmart",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "next dev",
+    "dev:storefront": "next dev --port 3000",
+    "dev:admin": "npm run dev --workspace=admin -- --port 3001",
+    "dev:all": "npm run dev:storefront & npm run dev:admin",
     "build": "next build",
+    "build:storefront": "next build",
+    "build:admin": "npm run build --workspace=admin",
+    "build:all": "npm run build:storefront && npm run build:admin",
     "start": "next start",
+    "start:admin": "npm run start --workspace=admin -- --port 3001",
     "lint": "eslint",
-    "db:types": "echo \"Generate types from Supabase dashboard or supabase gen types\""
+    "lint:admin": "npm run lint --workspace=admin"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",

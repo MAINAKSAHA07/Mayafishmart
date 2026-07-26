@@ -1,14 +1,27 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ProductCard } from "@/components/shop/ProductCard";
 import { RiseIn } from "@/components/ui/Motion";
 import { Logo } from "@/components/ui/Logo";
 import { getCategories, getProducts } from "@/lib/catalog";
+import { jsonLdScript, organizationJsonLd, SITE_DESCRIPTION } from "@/lib/seo";
+
+export const metadata: Metadata = {
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: "/" },
+};
 
 export default async function HomePage() {
   const [categories, products] = await Promise.all([getCategories(), getProducts()]);
+  const featured = products.slice(0, 6);
 
   return (
     <div>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={jsonLdScript(organizationJsonLd())}
+      />
+
       <section className="relative min-h-[min(88vh,820px)] overflow-hidden">
         <div
           className="absolute inset-0 bg-cover bg-center"
@@ -36,7 +49,7 @@ export default async function HomePage() {
             </p>
           </RiseIn>
           <RiseIn delay={0.18} className="mt-8 flex flex-wrap gap-3">
-            <Link href="/#catch" className="btn-primary">
+            <Link href="/catch" className="btn-primary">
               Shop today&apos;s catch
             </Link>
             <Link href="/login" className="btn-ghost">
@@ -46,40 +59,39 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section id="catch" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
+      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-20" aria-labelledby="catch-heading">
         <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-[clamp(1.75rem,4vw,2.35rem)] text-ocean-deep">Today&apos;s catch</h2>
+            <h2 id="catch-heading" className="text-[clamp(1.75rem,4vw,2.35rem)] text-ocean-deep">
+              Today&apos;s catch
+            </h2>
             <p className="mt-2 text-[0.975rem] text-muted">
               Priced per kg or piece. Counter pickup only.
             </p>
           </div>
           <div className="flex flex-wrap gap-2" role="navigation" aria-label="Categories">
-            <a href="#catch" className="chip chip-active">
+            <Link href="/catch" className="chip chip-active">
               All
-            </a>
+            </Link>
             {categories.map((c) => (
-              <a key={c.id} href={`#cat-${c.slug}`} className="chip chip-idle">
+              <Link key={c.id} href={`/catch/${c.slug}`} className="chip chip-idle">
                 {c.name}
-              </a>
+              </Link>
             ))}
           </div>
         </div>
 
-        {categories.map((category) => {
-          const items = products.filter((p) => p.category_id === category.id);
-          if (!items.length) return null;
-          return (
-            <div key={category.id} id={`cat-${category.slug}`} className="mb-14 scroll-mt-24">
-              <h3 className="mb-5 text-[1.5rem] text-ocean">{category.name}</h3>
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {items.map((product) => (
-                  <ProductCard key={product.id} product={product} />
-                ))}
-              </div>
-            </div>
-          );
-        })}
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {featured.map((product) => (
+            <ProductCard key={product.id} product={product} />
+          ))}
+        </div>
+
+        <div className="mt-10 text-center">
+          <Link href="/catch" className="btn-secondary inline-flex">
+            View full catch
+          </Link>
+        </div>
       </section>
 
       <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6">

@@ -42,7 +42,7 @@ export default function ShopLayoutShell({
           </Link>
 
           <nav className="flex items-center gap-1 sm:gap-2" aria-label="Primary">
-            <Link href="/#catch" className="nav-hit hidden sm:inline-flex">
+            <Link href="/catch" className="nav-hit hidden sm:inline-flex">
               Today&apos;s catch
             </Link>
             <Link href="/cart" className="nav-hit relative px-2">
@@ -55,9 +55,12 @@ export default function ShopLayoutShell({
                   Orders
                 </Link>
                 {["owner", "manager", "staff", "viewer"].includes(profile.role) && (
-                  <Link href="/admin" className="nav-hit text-aqua">
+                  <a
+                    href={process.env.NEXT_PUBLIC_ADMIN_URL || "http://localhost:3001"}
+                    className="nav-hit text-aqua"
+                  >
                     Ops
-                  </Link>
+                  </a>
                 )}
                 <span className="ml-1 hidden sm:inline">
                   <LogoutButton />

@@ -73,7 +73,7 @@ export default async function AccountPage() {
         ) : (
           <li className="surface p-10 text-center text-muted">
             No orders yet.{" "}
-            <Link href="/#catch" className="text-aqua hover:underline">
+            <Link href="/catch" className="text-aqua hover:underline">
               Shop the catch
             </Link>
           </li>

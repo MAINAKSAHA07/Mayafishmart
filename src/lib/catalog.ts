@@ -63,3 +63,18 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
     return DEMO_PRODUCTS.find((p) => p.slug === slug) ?? null;
   }
 }
+
+export async function getCategoryBySlug(slug: string): Promise<Category | null> {
+  const categories = await getCategories();
+  return categories.find((c) => c.slug === slug) ?? null;
+}
+
+export async function getAllProductSlugs(): Promise<string[]> {
+  const products = await getProducts();
+  return products.map((p) => p.slug);
+}
+
+export async function getAllCategorySlugs(): Promise<string[]> {
+  const categories = await getCategories();
+  return categories.map((c) => c.slug);
+}
