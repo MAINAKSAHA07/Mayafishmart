@@ -1,11 +1,11 @@
-import { createClient } from "@/lib/supabase/server";
 import { DEMO_CATEGORIES, DEMO_PRODUCTS, isSupabaseConfigured } from "@/lib/demo-data";
+import { createPublicClient } from "@/lib/supabase/public";
 import type { Category, Product } from "@/lib/types";
 
 export async function getCategories(): Promise<Category[]> {
   if (!isSupabaseConfigured()) return DEMO_CATEGORIES;
   try {
-    const supabase = await createClient();
+    const supabase = createPublicClient();
     const { data, error } = await supabase
       .from("categories")
       .select("*")
@@ -28,7 +28,7 @@ export async function getProducts(categorySlug?: string): Promise<Product[]> {
       : DEMO_PRODUCTS;
   }
   try {
-    const supabase = await createClient();
+    const supabase = createPublicClient();
     const { data, error } = await supabase
       .from("products")
       .select("*, categories(*), inventory(*)")
@@ -56,7 +56,7 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
     return DEMO_PRODUCTS.find((p) => p.slug === slug) ?? null;
   }
   try {
-    const supabase = await createClient();
+    const supabase = createPublicClient();
     const { data, error } = await supabase
       .from("products")
       .select("*, categories(*), inventory(*)")
