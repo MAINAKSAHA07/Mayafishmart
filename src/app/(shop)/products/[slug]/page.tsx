@@ -130,7 +130,8 @@ export default async function ProductPage({ params }: Props) {
             </span>
           </p>
           <p className="mt-1 text-sm text-muted">
-            GST {product.gst_rate}% · Min {product.min_order_qty} {product.unit}
+            Min {product.min_order_qty} {product.unit}
+            {/* GST disabled for now · GST {product.gst_rate}% */}
           </p>
           <p className="mt-1 text-sm text-muted">
             {available > 0 ? `${available} ${product.unit} in stock` : "Sold out today"}

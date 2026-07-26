@@ -79,28 +79,32 @@ export function CounterOrderForm({ products }: { products: Product[] }) {
               type="number"
               min={0}
               step={p.unit === "kg" ? 0.25 : 1}
-              className="input-field w-28 bg-white text-ink"
+              inputMode="decimal"
+              className="input-field w-full max-w-[8rem] bg-white text-ink"
               value={qtyMap[p.id] || ""}
               onChange={(e) =>
                 setQtyMap((m) => ({ ...m, [p.id]: Number(e.target.value) || 0 }))
               }
               placeholder="Qty"
+              aria-label={`Quantity for ${p.name}`}
             />
           </li>
         ))}
       </ul>
-      <div className="flex items-center justify-between rounded-xl bg-aqua/20 px-4 py-3">
-        <span>Total (ex GST estimate)</span>
-        <span className="font-semibold text-white">{formatInr(total)}</span>
+      <div className="sticky bottom-0 z-10 -mx-4 mt-4 space-y-3 border-t border-white/10 bg-[#08183c]/90 px-4 py-3 backdrop-blur-xl safe-b sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:backdrop-blur-none">
+        <div className="flex items-center justify-between rounded-xl bg-aqua/20 px-4 py-3">
+          <span>Total</span>
+          <span className="font-semibold text-white">{formatInr(total)}</span>
+        </div>
+        {error && <p className="text-sm text-coral">{error}</p>}
+        <button
+          type="submit"
+          disabled={loading || !lines.length}
+          className="btn-primary w-full disabled:opacity-50"
+        >
+          {loading ? "Creating…" : "Create counter order"}
+        </button>
       </div>
-      {error && <p className="text-sm text-coral">{error}</p>}
-      <button
-        type="submit"
-        disabled={loading || !lines.length}
-        className="rounded-full bg-coral px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-      >
-        {loading ? "Creating…" : "Create counter order"}
-      </button>
     </form>
   );
 }

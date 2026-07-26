@@ -1,7 +1,7 @@
 "use client";
 
 import { useCart } from "@/lib/cart/store";
-import { formatInr, splitCgstSgst } from "@/lib/money";
+import { formatInr } from "@/lib/money";
 import { getPickupSlots } from "@/lib/pickup";
 import { isSupabaseConfigured } from "@/lib/demo-data";
 import { createClient } from "@/lib/supabase/client";
@@ -49,7 +49,7 @@ function Field({
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, subtotalPaise, gstPaise, totalPaise, clear } = useCart();
+  const { items, subtotalPaise, gstPaise, totalPaise, clear, pruneInvalid } = useCart();
   const slots = useMemo(() => getPickupSlots(), []);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -67,9 +67,40 @@ export default function CheckoutPage() {
   const [pincode, setPincode] = useState("");
   const [pickupSlot, setPickupSlot] = useState(slots[0] ?? "");
   const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "counter">("counter");
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCode, setAppliedCode] = useState<string | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [pricing, setPricing] = useState<{
+    subtotalPaise: number;
+    discountPaise: number;
+    taxablePaise: number;
+    gstPaise: number;
+    totalPaise: number;
+  } | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
+    pruneInvalid();
     setReady(true);
+
+    try {
+      const raw = localStorage.getItem("maya-guest-checkout");
+      if (raw) {
+        const saved = JSON.parse(raw) as Record<string, string>;
+        if (saved.fullName) setFullName(saved.fullName);
+        if (saved.email) setEmail(saved.email);
+        if (saved.phone) setPhone(saved.phone);
+        if (saved.line1) setLine1(saved.line1);
+        if (saved.line2) setLine2(saved.line2);
+        if (saved.city) setCity(saved.city);
+        if (saved.state) setState(saved.state);
+        if (saved.pincode) setPincode(saved.pincode);
+      }
+    } catch {
+      /* ignore bad local storage */
+    }
+
     async function prefills() {
       if (!isSupabaseConfigured()) return;
       const supabase = createClient();
@@ -77,9 +108,10 @@ export default function CheckoutPage() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) {
-        router.push("/login?next=/checkout");
+        setIsLoggedIn(false);
         return;
       }
+      setIsLoggedIn(true);
       const { data: profile } = await supabase
         .from("profiles")
         .select("*")
@@ -104,7 +136,7 @@ export default function CheckoutPage() {
       }
     }
     prefills();
-  }, [router]);
+  }, [pruneInvalid]);
 
   function validate(): FieldErrors {
     const next: FieldErrors = {};
@@ -135,6 +167,49 @@ export default function CheckoutPage() {
       script.onerror = () => resolve(false);
       document.body.appendChild(script);
     });
+  }
+
+  async function applyCoupon() {
+    setCouponError(null);
+    if (!couponInput.trim()) {
+      setCouponError("Enter a coupon code");
+      return;
+    }
+    setCouponLoading(true);
+    try {
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: couponInput.trim(),
+          items: items.map((i) => ({ productId: i.productId, qty: i.qty })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Invalid coupon");
+      setAppliedCode(data.pricing.couponCode);
+      setPricing({
+        subtotalPaise: data.pricing.subtotalPaise,
+        discountPaise: data.pricing.discountPaise,
+        taxablePaise: data.pricing.taxablePaise,
+        gstPaise: data.pricing.gstPaise,
+        totalPaise: data.pricing.totalPaise,
+      });
+      setCouponInput(data.pricing.couponCode || couponInput);
+    } catch (err) {
+      setAppliedCode(null);
+      setPricing(null);
+      setCouponError(err instanceof Error ? err.message : "Invalid coupon");
+    } finally {
+      setCouponLoading(false);
+    }
+  }
+
+  function removeCoupon() {
+    setAppliedCode(null);
+    setPricing(null);
+    setCouponInput("");
+    setCouponError(null);
   }
 
   async function onSubmit(e: FormEvent) {
@@ -171,6 +246,22 @@ export default function CheckoutPage() {
 
     setLoading(true);
     try {
+      const guestDetails = {
+        fullName: fullName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        line1: line1.trim(),
+        line2: line2.trim(),
+        city: city.trim(),
+        state: state.trim(),
+        pincode: pincode.trim(),
+      };
+      try {
+        localStorage.setItem("maya-guest-checkout", JSON.stringify(guestDetails));
+      } catch {
+        /* ignore */
+      }
+
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -180,23 +271,26 @@ export default function CheckoutPage() {
             qty: i.qty,
           })),
           customer: {
-            fullName: fullName.trim(),
-            email: email.trim(),
-            phone: phone.trim(),
+            fullName: guestDetails.fullName,
+            email: guestDetails.email,
+            phone: guestDetails.phone,
             address: {
-              line1: line1.trim(),
-              line2: line2.trim(),
-              city: city.trim(),
-              state: state.trim(),
-              pincode: pincode.trim(),
+              line1: guestDetails.line1,
+              line2: guestDetails.line2,
+              city: guestDetails.city,
+              state: guestDetails.state,
+              pincode: guestDetails.pincode,
             },
           },
           pickupSlot,
           paymentMethod,
+          couponCode: appliedCode || undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to place order");
+
+      const orderPath = `/orders/${data.order.id}?pickup=${encodeURIComponent(data.order.pickup_code)}`;
 
       if (paymentMethod === "razorpay" && data.razorpay) {
         const ok = await loadRazorpay();
@@ -223,13 +317,13 @@ export default function CheckoutPage() {
               }),
             });
             clear();
-            router.push(`/orders/${data.order.id}`);
+            router.push(orderPath);
           },
         });
         rzp.open();
       } else {
         clear();
-        router.push(`/orders/${data.order.id}`);
+        router.push(orderPath);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Checkout failed");
@@ -258,8 +352,13 @@ export default function CheckoutPage() {
     );
   }
 
-  const gst = gstPaise();
-  const { cgst, sgst } = splitCgstSgst(gst);
+  const gst = pricing?.gstPaise ?? gstPaise();
+  const displaySubtotal = pricing?.subtotalPaise ?? subtotalPaise();
+  const displayDiscount = pricing?.discountPaise ?? 0;
+  const displayTotal = pricing?.totalPaise ?? totalPaise();
+  // GST disabled for now
+  // const { cgst, sgst } = splitCgstSgst(gst);
+  void gst;
   const itemCount = items.length;
 
   function inputClass(key: keyof FieldErrors) {
@@ -275,8 +374,19 @@ export default function CheckoutPage() {
       <header className="mt-5">
         <h1 className="text-[clamp(2rem,5vw,2.6rem)] text-ocean-deep">Checkout</h1>
         <p className="mt-2 max-w-prose text-[0.95rem] leading-relaxed text-muted">
-          Pickup only. We save your contact details when you place this order.
+          Pickup only. Continue as guest — login is optional.
         </p>
+        {!isLoggedIn ? (
+          <p className="mt-3 rounded-[0.85rem] bg-foam px-4 py-3 text-sm text-ink">
+            Continuing as guest. Have an account?{" "}
+            <Link href="/login?next=/checkout" className="font-semibold text-ocean underline">
+              Sign in
+            </Link>{" "}
+            to autofill saved details.
+          </p>
+        ) : (
+          <p className="mt-3 text-sm text-aqua">Signed in — your saved details are filled in.</p>
+        )}
       </header>
 
       <form noValidate onSubmit={onSubmit} className="mt-8 space-y-4">
@@ -515,11 +625,58 @@ export default function CheckoutPage() {
               </li>
             ))}
           </ul>
+
+          <div className="mt-4 flex gap-2">
+            <input
+              value={couponInput}
+              onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+              placeholder="Coupon code"
+              disabled={!!appliedCode || couponLoading}
+              className="input-field flex-1 !bg-white/10 !text-white placeholder:text-foam/40"
+              aria-label="Coupon code"
+            />
+            {appliedCode ? (
+              <button
+                type="button"
+                onClick={removeCoupon}
+                className="pressable rounded-full bg-white/15 px-4 py-2 text-sm font-semibold text-foam"
+              >
+                Remove
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={applyCoupon}
+                disabled={couponLoading}
+                className="pressable rounded-full bg-aqua px-4 py-2 text-sm font-semibold text-ocean-deep disabled:opacity-50"
+              >
+                {couponLoading ? "…" : "Apply"}
+              </button>
+            )}
+          </div>
+          {couponError && (
+            <p className="mt-2 text-sm text-coral" role="alert">
+              {couponError}
+            </p>
+          )}
+          {appliedCode && !couponError && (
+            <p className="mt-2 text-sm text-aqua" role="status">
+              Applied {appliedCode}
+            </p>
+          )}
+
           <div className="mt-4 space-y-1.5 text-sm">
             <div className="flex justify-between text-foam/75">
               <span>Subtotal</span>
-              <span className="tabular-nums">{formatInr(subtotalPaise())}</span>
+              <span className="tabular-nums">{formatInr(displaySubtotal)}</span>
             </div>
+            {displayDiscount > 0 && (
+              <div className="flex justify-between text-aqua">
+                <span>Discount{appliedCode ? ` (${appliedCode})` : ""}</span>
+                <span className="tabular-nums">−{formatInr(displayDiscount)}</span>
+              </div>
+            )}
+            {/* GST disabled for now
             <div className="flex justify-between text-foam/65">
               <span>CGST</span>
               <span className="tabular-nums">{formatInr(cgst)}</span>
@@ -528,9 +685,10 @@ export default function CheckoutPage() {
               <span>SGST</span>
               <span className="tabular-nums">{formatInr(sgst)}</span>
             </div>
+            */}
             <div className="flex justify-between pt-2 text-[1.125rem] font-semibold tracking-[-0.015em] text-white">
               <span>Total</span>
-              <span className="tabular-nums">{formatInr(totalPaise())}</span>
+              <span className="tabular-nums">{formatInr(displayTotal)}</span>
             </div>
           </div>
         </section>
