@@ -14,8 +14,10 @@ export default async function InsightsPage() {
 
   return (
     <div>
-      <h1 className="font-display text-3xl text-white">AI Insights</h1>
-      <p className="mt-1 text-sm text-foam/60">Sales trends and stock recommendations</p>
+      <h1 className="font-display ops-page-title">AI Insights</h1>
+      <p className="mt-1 text-sm text-foam/60">
+        Manual trigger only — nothing runs until you generate a report.
+      </p>
       <InsightsPanel initial={(data as AiInsight[] | null) ?? []} />
     </div>
   );

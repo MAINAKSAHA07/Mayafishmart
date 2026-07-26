@@ -30,11 +30,18 @@ export function InsightsPanel({ initial }: { initial: AiInsight[] }) {
         type="button"
         onClick={generate}
         disabled={loading}
-        className="rounded-full bg-coral px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+        className="btn-primary disabled:opacity-60"
       >
-        {loading ? "Analyzing…" : "Generate sales & stock insights"}
+        {loading ? "Analyzing…" : "Generate insights"}
       </button>
-      {error && <p className="mt-3 text-sm text-coral">{error}</p>}
+      <p className="mt-2 text-xs text-foam/45">
+        On-demand only — no schedule or background jobs.
+      </p>
+      {error && (
+        <p className="mt-3 text-sm text-coral" role="alert">
+          {error}
+        </p>
+      )}
 
       <ul className="mt-8 space-y-4">
         {insights.map((insight) => {
@@ -46,7 +53,7 @@ export function InsightsPanel({ initial }: { initial: AiInsight[] }) {
             day_patterns?: string[];
           };
           return (
-            <li key={insight.id} className="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10">
+            <li key={insight.id} className="ops-card">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs tracking-wide text-aqua uppercase">{insight.type} insight</p>
                 <p className="text-xs text-foam/50">
@@ -90,7 +97,7 @@ export function InsightsPanel({ initial }: { initial: AiInsight[] }) {
         })}
         {!insights.length && (
           <li className="rounded-2xl bg-white/5 py-10 text-center text-foam/50">
-            No insights yet — generate your first report
+            No insights yet — tap Generate when you want a report
           </li>
         )}
       </ul>

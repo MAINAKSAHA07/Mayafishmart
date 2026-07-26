@@ -4,6 +4,7 @@ import { createAdminClient } from "@mayafishmart/shared/supabase/admin";
 import { MANAGER_ROLES } from "@mayafishmart/shared/types";
 import { format, subDays } from "date-fns";
 
+/** Manual trigger only — called from Ops AI Insights "Generate" button. No cron. */
 export async function POST() {
   const supabase = await createClient();
   const {

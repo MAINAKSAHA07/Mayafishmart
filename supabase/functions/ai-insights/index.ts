@@ -1,50 +1,58 @@
 // Edge Function: ai-insights
-// Deploy with: supabase functions deploy ai-insights
-// Secrets: OPENAI_API_KEY, SUPABASE_SERVICE_ROLE_KEY
+// Manual / trigger-only. Do NOT schedule this on a cron.
+// Prefer Ops UI → AI Insights → "Generate" (POST /api/ai/insights).
+//
+// If you must call this edge function, send:
+//   POST with header: x-trigger-secret: $INSIGHTS_TRIGGER_SECRET
+// Optional body: { "trigger": true }
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 serve(async (req) => {
   if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  const expected = Deno.env.get("INSIGHTS_TRIGGER_SECRET")?.trim();
+  const provided =
+    req.headers.get("x-trigger-secret")?.trim() ||
+    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
+
+  let bodyTrigger = false;
+  try {
+    const body = await req.json();
+    bodyTrigger = body?.trigger === true;
+  } catch {
+    // no JSON body
+  }
+
+  // No secret configured → refuse automatic/cron use; force Ops UI
+  if (!expected) {
+    return new Response(
+      JSON.stringify({
+        error: "AI insights are trigger-based only. Use Maya Ops → AI Insights → Generate.",
+        hint: "Set INSIGHTS_TRIGGER_SECRET only if you need a manual edge invoke.",
+      }),
+      { status: 403, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  if (!provided || provided !== expected || !bodyTrigger) {
+    return new Response(
+      JSON.stringify({
+        error: "Missing manual trigger. Send x-trigger-secret and JSON { \"trigger\": true }.",
+      }),
+      { status: 403, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  return new Response(
+    JSON.stringify({
+      error: "Use Maya Ops POST /api/ai/insights for full analysis. Edge cron snapshots are disabled.",
+    }),
+    { status: 410, headers: { "Content-Type": "application/json" } },
   );
-
-  const { data: orders } = await supabase
-    .from("orders")
-    .select("id, total_paise, created_at, order_items(*)")
-    .order("created_at", { ascending: false })
-    .limit(100);
-
-  const payload = {
-    summary: `Edge cron snapshot: ${(orders ?? []).length} recent orders.`,
-    top_sellers: [],
-    slow_movers: [],
-    reorder_suggestions: [],
-    day_patterns: ["Run from admin UI for full LLM analysis."],
-  };
-
-  const today = new Date().toISOString().slice(0, 10);
-  const { data, error } = await supabase
-    .from("ai_insights")
-    .insert({
-      type: "sales",
-      period_start: today,
-      period_end: today,
-      payload,
-    })
-    .select("*")
-    .single();
-
-  if (error) {
-    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
-  }
-  return new Response(JSON.stringify({ insight: data }), {
-    headers: { "Content-Type": "application/json" },
-  });
 });
