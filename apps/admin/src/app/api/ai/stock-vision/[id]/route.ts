@@ -53,6 +53,13 @@ export async function PATCH(
       suggested_qty: number;
     }>;
 
+    if (!updates?.length) {
+      return NextResponse.json(
+        { error: "No proposed stock updates to apply" },
+        { status: 400 },
+      );
+    }
+
     for (const u of updates) {
       if (!u.product_id) continue;
       const { data: inv } = await admin
