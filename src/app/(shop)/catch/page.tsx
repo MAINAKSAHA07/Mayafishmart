@@ -41,7 +41,7 @@ export default async function CatchPage() {
       <header className="mb-8">
         <h1 className="text-[clamp(2rem,5vw,2.75rem)] text-ocean-deep">Today&apos;s catch</h1>
         <p className="mt-2 max-w-2xl text-[0.975rem] leading-relaxed text-muted">
-          Priced per kg or piece. Counter pickup only — pay online or when you collect.
+          Priced per kg or piece. Pickup at the shop or delivery — pay online or later.
         </p>
       </header>
 

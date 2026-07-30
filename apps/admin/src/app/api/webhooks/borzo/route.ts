@@ -53,8 +53,6 @@ export async function POST(request: NextRequest) {
   });
 
   if (error) {
-    // Still 200 after valid signature so Borzo does not retry for 24h on our DB blips;
-    // log for ops follow-up.
     console.error("borzo webhook persist failed", error.message, {
       eventType,
       borzoOrderId,
@@ -63,6 +61,34 @@ export async function POST(request: NextRequest) {
     });
   } else {
     console.info("borzo webhook ok", { eventType, borzoOrderId, borzoDeliveryId, status });
+  }
+
+  if (borzoOrderId != null) {
+    const trackingUrl =
+      (payload.delivery as { tracking_url?: string } | undefined)?.tracking_url ||
+      (
+        payload.order?.points as
+          | Array<{ tracking_url?: string | null }>
+          | undefined
+      )?.find((p) => p.tracking_url)?.tracking_url ||
+      null;
+
+    const updates: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (status) updates.borzo_delivery_status = status;
+    if (trackingUrl) updates.borzo_tracking_url = trackingUrl;
+
+    const { error: orderError } = await admin
+      .from("orders")
+      .update(updates)
+      .eq("borzo_order_id", borzoOrderId);
+
+    if (orderError) {
+      console.error("borzo webhook order update failed", orderError.message, {
+        borzoOrderId,
+      });
+    }
   }
 
   return NextResponse.json({ ok: true });

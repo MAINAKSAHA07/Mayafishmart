@@ -23,12 +23,14 @@ export type BorzoWebhookPayload = {
   order?: {
     order_id?: number;
     status?: string;
+    points?: Array<{ tracking_url?: string | null; [key: string]: unknown }>;
     [key: string]: unknown;
   };
   delivery?: {
     delivery_id?: number;
     order_id?: number;
     status?: string;
+    tracking_url?: string | null;
     [key: string]: unknown;
   };
 };

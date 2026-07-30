@@ -9,6 +9,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+type Fulfillment = "pickup" | "delivery";
+
 declare global {
   interface Window {
     Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
@@ -66,6 +68,7 @@ export default function CheckoutPage() {
   const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
   const [pickupSlot, setPickupSlot] = useState(slots[0] ?? "");
+  const [fulfillment, setFulfillment] = useState<Fulfillment>("pickup");
   const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "counter">("counter");
   const [couponInput, setCouponInput] = useState("");
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
@@ -78,6 +81,9 @@ export default function CheckoutPage() {
     gstPaise: number;
     totalPaise: number;
   } | null>(null);
+  const [deliveryFeePaise, setDeliveryFeePaise] = useState<number | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
@@ -137,6 +143,70 @@ export default function CheckoutPage() {
     }
     prefills();
   }, [pruneInvalid]);
+
+  const cartWeightKg = useMemo(() => {
+    return items.reduce((sum, i) => sum + (i.unit === "kg" ? i.qty : i.qty * 0.5), 0);
+  }, [items]);
+
+  useEffect(() => {
+    if (fulfillment !== "delivery") {
+      setDeliveryFeePaise(null);
+      setQuoteError(null);
+      setQuoteLoading(false);
+      return;
+    }
+
+    const phoneOk = phone.replace(/\D/g, "").length >= 10;
+    const addressOk =
+      line1.trim().length >= 3 &&
+      city.trim().length >= 2 &&
+      state.trim().length >= 2 &&
+      /^\d{6}$/.test(pincode.trim());
+    if (!phoneOk || !addressOk) {
+      setDeliveryFeePaise(null);
+      setQuoteError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setQuoteLoading(true);
+      setQuoteError(null);
+      try {
+        const res = await fetch("/api/delivery/quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            phone: phone.trim(),
+            fullName: fullName.trim() || undefined,
+            address: {
+              line1: line1.trim(),
+              line2: line2.trim() || undefined,
+              city: city.trim(),
+              state: state.trim(),
+              pincode: pincode.trim(),
+            },
+            totalWeightKg: cartWeightKg > 0 ? cartWeightKg : undefined,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not get delivery quote");
+        setDeliveryFeePaise(Number(data.deliveryFeePaise) || 0);
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setDeliveryFeePaise(null);
+        setQuoteError(err instanceof Error ? err.message : "Delivery quote failed");
+      } finally {
+        if (!controller.signal.aborted) setQuoteLoading(false);
+      }
+    }, 450);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [fulfillment, phone, fullName, line1, line2, city, state, pincode, cartWeightKg]);
 
   function validate(): FieldErrors {
     const next: FieldErrors = {};
@@ -243,6 +313,16 @@ export default function CheckoutPage() {
       setError("Connect Supabase to place live orders. Demo catalog is browse-only.");
       return;
     }
+    if (fulfillment === "delivery") {
+      if (quoteLoading) {
+        setError("Wait for the delivery quote to finish.");
+        return;
+      }
+      if (deliveryFeePaise == null || quoteError) {
+        setError(quoteError || "Get a valid delivery quote before placing the order.");
+        return;
+      }
+    }
 
     setLoading(true);
     try {
@@ -282,13 +362,17 @@ export default function CheckoutPage() {
               pincode: guestDetails.pincode,
             },
           },
-          pickupSlot,
+          fulfillment,
+          pickupSlot: fulfillment === "pickup" ? pickupSlot : undefined,
           paymentMethod,
           couponCode: appliedCode || undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to place order");
+      if (data.borzoWarning) {
+        console.warn("borzoWarning", data.borzoWarning);
+      }
 
       const orderPath = `/orders/${data.order.id}?pickup=${encodeURIComponent(data.order.pickup_code)}`;
 
@@ -300,7 +384,10 @@ export default function CheckoutPage() {
           amount: data.razorpay.amount,
           currency: "INR",
           name: "Maya Fish Mart",
-          description: `Pickup ${data.order.pickup_code}`,
+          description:
+            fulfillment === "delivery"
+              ? `Delivery ${data.order.pickup_code}`
+              : `Pickup ${data.order.pickup_code}`,
           order_id: data.razorpay.orderId,
           prefill: { name: fullName, email, contact: phone },
           handler: async (response: {
@@ -355,11 +442,16 @@ export default function CheckoutPage() {
   const gst = pricing?.gstPaise ?? gstPaise();
   const displaySubtotal = pricing?.subtotalPaise ?? subtotalPaise();
   const displayDiscount = pricing?.discountPaise ?? 0;
-  const displayTotal = pricing?.totalPaise ?? totalPaise();
+  const goodsTotal = pricing?.totalPaise ?? totalPaise();
+  const feeForTotal = fulfillment === "delivery" ? deliveryFeePaise ?? 0 : 0;
+  const displayTotal = goodsTotal + feeForTotal;
   // GST disabled for now
   // const { cgst, sgst } = splitCgstSgst(gst);
   void gst;
   const itemCount = items.length;
+  const canPlaceDelivery =
+    fulfillment !== "delivery" ||
+    (deliveryFeePaise != null && !quoteLoading && !quoteError);
 
   function inputClass(key: keyof FieldErrors) {
     return `input-field input-checkout ${showError(key) ? "input-invalid" : ""}`;
@@ -374,7 +466,7 @@ export default function CheckoutPage() {
       <header className="mt-5">
         <h1 className="text-[clamp(2rem,5vw,2.6rem)] text-ocean-deep">Checkout</h1>
         <p className="mt-2 max-w-prose text-[0.95rem] leading-relaxed text-muted">
-          Pickup only. Continue as guest — login is optional.
+          Pickup at the shop or delivery to your door. Continue as guest — login is optional.
         </p>
         {!isLoggedIn ? (
           <p className="mt-3 rounded-[0.85rem] bg-foam px-4 py-3 text-sm text-ink">
@@ -390,6 +482,47 @@ export default function CheckoutPage() {
       </header>
 
       <form noValidate onSubmit={onSubmit} className="mt-8 space-y-4">
+        {/* Fulfillment */}
+        <section className="surface-solid overflow-hidden">
+          <div className="border-b border-[var(--line)] px-5 py-4 sm:px-6">
+            <h2 className="text-[1.05rem] font-semibold tracking-[-0.015em] text-ink">
+              How you get it
+            </h2>
+          </div>
+          <div className="px-5 py-5 sm:px-6">
+            <div
+              className="grid grid-cols-2 gap-2"
+              role="radiogroup"
+              aria-label="Pickup or delivery"
+            >
+              {(
+                [
+                  ["pickup", "Pickup"],
+                  ["delivery", "Delivery"],
+                ] as const
+              ).map(([value, label]) => {
+                const active = fulfillment === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setFulfillment(value)}
+                    className={`pressable rounded-[0.85rem] border px-3 py-3 text-left text-sm font-semibold transition-[background,border-color,color] ${
+                      active
+                        ? "border-ocean bg-ocean text-white"
+                        : "border-[var(--line)] bg-white text-ink hover:bg-foam/60"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
         {/* Contact */}
         <section className="surface-solid overflow-hidden">
           <div className="border-b border-[var(--line)] px-5 py-4 sm:px-6">
@@ -397,7 +530,9 @@ export default function CheckoutPage() {
               Contact
             </h2>
             <p className="mt-0.5 text-[0.8125rem] text-muted">
-              How we reach you about this pickup
+              {fulfillment === "delivery"
+                ? "How we reach you about this delivery"
+                : "How we reach you about this pickup"}
             </p>
           </div>
           <div className="space-y-4 px-5 py-5 sm:px-6">
@@ -456,10 +591,12 @@ export default function CheckoutPage() {
         <section className="surface-solid overflow-hidden">
           <div className="border-b border-[var(--line)] px-5 py-4 sm:px-6">
             <h2 className="text-[1.05rem] font-semibold tracking-[-0.015em] text-ink">
-              Address
+              {fulfillment === "delivery" ? "Delivery address" : "Address"}
             </h2>
             <p className="mt-0.5 text-[0.8125rem] text-muted">
-              For your customer record — not for delivery
+              {fulfillment === "delivery"
+                ? "Courier delivers from our Manpada shop to this address"
+                : "For your customer record — not for delivery"}
             </p>
           </div>
           <div className="space-y-4 px-5 py-5 sm:px-6">
@@ -540,27 +677,40 @@ export default function CheckoutPage() {
         <section className="surface-solid overflow-hidden">
           <div className="border-b border-[var(--line)] px-5 py-4 sm:px-6">
             <h2 className="text-[1.05rem] font-semibold tracking-[-0.015em] text-ink">
-              Pickup & payment
+              {fulfillment === "delivery" ? "Delivery & payment" : "Pickup & payment"}
             </h2>
           </div>
           <div className="space-y-5 px-5 py-5 sm:px-6">
-            <div>
-              <label className="label" htmlFor="slot">
-                Pickup window
-              </label>
-              <select
-                id="slot"
-                className="input-field input-checkout"
-                value={pickupSlot}
-                onChange={(e) => setPickupSlot(e.target.value)}
-              >
-                {slots.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {fulfillment === "pickup" ? (
+              <div>
+                <label className="label" htmlFor="slot">
+                  Pickup window
+                </label>
+                <select
+                  id="slot"
+                  className="input-field input-checkout"
+                  value={pickupSlot}
+                  onChange={(e) => setPickupSlot(e.target.value)}
+                >
+                  {slots.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <p className="text-sm leading-relaxed text-muted">
+                Same-day courier from Manpada. Fee is quoted after you enter your address.
+                {quoteLoading ? " Getting quote…" : null}
+              </p>
+            )}
+
+            {fulfillment === "delivery" && quoteError ? (
+              <p className="text-sm font-medium text-coral" role="alert">
+                {quoteError}
+              </p>
+            ) : null}
 
             <div>
               <p className="label" id="pay-label">
@@ -573,7 +723,10 @@ export default function CheckoutPage() {
               >
                 {(
                   [
-                    ["counter", "Pay at counter"],
+                    [
+                      "counter",
+                      fulfillment === "delivery" ? "Pay later" : "Pay at counter",
+                    ],
                     ["razorpay", "Pay online"],
                   ] as const
                 ).map(([value, label]) => {
@@ -676,6 +829,18 @@ export default function CheckoutPage() {
                 <span className="tabular-nums">−{formatInr(displayDiscount)}</span>
               </div>
             )}
+            {fulfillment === "delivery" && (
+              <div className="flex justify-between text-foam/75">
+                <span>Delivery</span>
+                <span className="tabular-nums">
+                  {quoteLoading
+                    ? "…"
+                    : deliveryFeePaise != null
+                      ? formatInr(deliveryFeePaise)
+                      : "—"}
+                </span>
+              </div>
+            )}
             {/* GST disabled for now
             <div className="flex justify-between text-foam/65">
               <span>CGST</span>
@@ -702,8 +867,16 @@ export default function CheckoutPage() {
           </p>
         )}
 
-        <button type="submit" className="btn-primary w-full !py-3.5 text-[1rem]" disabled={loading}>
-          {loading ? "Placing order…" : "Place pickup order"}
+        <button
+          type="submit"
+          className="btn-primary w-full !py-3.5 text-[1rem]"
+          disabled={loading || !canPlaceDelivery}
+        >
+          {loading
+            ? "Placing order…"
+            : fulfillment === "delivery"
+              ? "Place delivery order"
+              : "Place pickup order"}
         </button>
       </form>
     </div>

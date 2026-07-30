@@ -82,6 +82,7 @@ export interface Order {
   subtotal_paise: number;
   discount_paise: number;
   gst_paise: number;
+  delivery_fee_paise?: number;
   total_paise: number;
   coupon_id: string | null;
   coupon_code: string | null;
@@ -95,6 +96,9 @@ export interface Order {
     state: string;
     pincode: string;
   };
+  borzo_order_id?: number | null;
+  borzo_delivery_status?: string | null;
+  borzo_tracking_url?: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;

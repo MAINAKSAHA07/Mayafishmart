@@ -3,7 +3,7 @@ import { buildMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = buildMetadata({
   title: "Checkout",
-  description: "Complete your Maya Fish Mart pickup order.",
+  description: "Complete your Maya Fish Mart pickup or delivery order.",
   path: "/checkout",
   noIndex: true,
 });

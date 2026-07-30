@@ -6,6 +6,7 @@ import { isSupabaseConfigured } from "@/lib/demo-data";
 import { formatInr } from "@/lib/money";
 import type { Order, OrderItem } from "@/lib/types";
 import { PrintReceiptButton } from "@/components/shop/PrintReceiptButton";
+import { DeliveryTracking } from "@/components/shop/DeliveryTracking";
 
 const STEPS = ["placed", "confirmed", "ready", "picked_up"] as const;
 
@@ -106,14 +107,25 @@ export default async function OrderDetailPage({
         Order confirmed
       </h1>
       <p className="no-print mt-2 text-lg">
-        Pickup code{" "}
+        {o.fulfillment === "delivery" ? "Order code" : "Pickup code"}{" "}
         <span className="rounded-lg bg-ocean px-3 py-1 font-mono text-xl font-bold tracking-widest text-white">
           {o.pickup_code}
         </span>
       </p>
-      <p className="no-print mt-3 text-muted">{o.pickup_slot}</p>
+      <p className="no-print mt-3 text-muted">
+        {o.fulfillment === "delivery" ? "Delivery" : "Pickup"} · {o.pickup_slot}
+      </p>
 
-      {o.status !== "cancelled" ? (
+      {o.fulfillment === "delivery" ? (
+        <DeliveryTracking
+          orderId={o.id}
+          pickupCode={pickup || o.pickup_code}
+          initialStatus={o.borzo_delivery_status}
+          initialTrackingUrl={o.borzo_tracking_url}
+        />
+      ) : null}
+
+      {o.status !== "cancelled" && o.fulfillment !== "delivery" ? (
         <ol className="no-print mt-8 flex flex-wrap gap-2">
           {STEPS.map((step, i) => (
             <li
@@ -126,9 +138,9 @@ export default async function OrderDetailPage({
             </li>
           ))}
         </ol>
-      ) : (
+      ) : o.status === "cancelled" ? (
         <p className="no-print mt-6 font-semibold text-coral">Cancelled</p>
-      )}
+      ) : null}
 
       <article className="receipt-print mt-8 rounded-2xl bg-white p-5 ring-1 ring-line sm:p-6">
         <div className="text-center">
@@ -137,11 +149,15 @@ export default async function OrderDetailPage({
           <h2 className="mt-2 font-display text-2xl tracking-[-0.03em] text-ocean-deep">
             Maya Fish Mart
           </h2>
-          <p className="text-xs text-muted">Pickup receipt · {when}</p>
+          <p className="text-xs text-muted">
+            {o.fulfillment === "delivery" ? "Delivery" : "Pickup"} receipt · {when}
+          </p>
         </div>
 
         <div className="receipt-code my-4 rounded-xl bg-ocean-deep px-3 py-3 text-center text-white">
-          <p className="text-[0.65rem] tracking-[0.14em] uppercase opacity-80">Pickup code</p>
+          <p className="text-[0.65rem] tracking-[0.14em] uppercase opacity-80">
+            {o.fulfillment === "delivery" ? "Order code" : "Pickup code"}
+          </p>
           <p className="font-mono text-[2rem] font-bold tracking-[0.16em]">{o.pickup_code}</p>
         </div>
 
@@ -167,6 +183,12 @@ export default async function OrderDetailPage({
               <span className="tabular-nums">−{formatInr(o.discount_paise)}</span>
             </div>
           )}
+          {(o.delivery_fee_paise ?? 0) > 0 && (
+            <div className="flex justify-between text-muted">
+              <span>Delivery</span>
+              <span className="tabular-nums">{formatInr(o.delivery_fee_paise!)}</span>
+            </div>
+          )}
           {/* GST disabled for now
           <div className="flex justify-between text-muted">
             <span>CGST</span>
@@ -182,7 +204,8 @@ export default async function OrderDetailPage({
             <span className="tabular-nums">{formatInr(o.total_paise)}</span>
           </div>
           <p className="pt-1 text-xs text-muted">
-            Payment: {o.payment_method} · {o.payment_status} · {o.pickup_slot}
+            Payment: {o.payment_method} · {o.payment_status}
+            {o.fulfillment === "delivery" ? " · delivery" : ` · ${o.pickup_slot}`}
           </p>
         </div>
       </article>

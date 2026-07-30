@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { bookBorzoForOrder } from "@/lib/borzo/book";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
   const admin = createAdminClient();
   const { data: order, error: findError } = await admin
     .from("orders")
-    .select("id, razorpay_order_id")
+    .select("*")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -57,5 +58,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  let borzoWarning: string | null = null;
+  if (order.fulfillment === "delivery") {
+    const { data: items } = await admin
+      .from("order_items")
+      .select("qty, unit")
+      .eq("order_id", orderId);
+    let totalWeightKg = 0;
+    for (const item of items ?? []) {
+      if (item.unit === "kg") totalWeightKg += Number(item.qty);
+      else totalWeightKg += Number(item.qty) * 0.5;
+    }
+
+    const booked = await bookBorzoForOrder(
+      admin,
+      {
+        id: order.id,
+        pickup_code: order.pickup_code,
+        customer_phone: order.customer_phone,
+        customer_name: order.customer_name,
+        customer_address: order.customer_address,
+        borzo_order_id: order.borzo_order_id,
+        fulfillment: order.fulfillment,
+      },
+      totalWeightKg
+    );
+    if (!booked.ok) {
+      borzoWarning = booked.error;
+    }
+  }
+
+  return NextResponse.json({ ok: true, borzoWarning });
 }

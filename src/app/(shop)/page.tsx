@@ -44,8 +44,8 @@ export default async function HomePage() {
           </RiseIn>
           <RiseIn delay={0.12} className="mt-4 max-w-md">
             <p className="text-[1.125rem] leading-relaxed text-foam/88">
-              Order today&apos;s catch online. Pay now or at the counter. Pick up when we call your
-              name.
+              Order today&apos;s catch online. Pay now or later. Pickup at the shop or get it
+              delivered.
             </p>
           </RiseIn>
           <RiseIn delay={0.18} className="mt-8 flex flex-wrap gap-3">
@@ -66,7 +66,7 @@ export default async function HomePage() {
               Today&apos;s catch
             </h2>
             <p className="mt-2 text-[0.975rem] text-muted">
-              Priced per kg or piece. Counter pickup only.
+              Priced per kg or piece. Pickup at the shop or delivery.
             </p>
           </div>
           <div className="flex flex-wrap gap-2" role="navigation" aria-label="Categories">
@@ -96,12 +96,12 @@ export default async function HomePage() {
 
       <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6">
         <div className="overflow-hidden rounded-[1.75rem] bg-ocean-deep px-6 py-11 text-foam sm:px-11">
-          <h2 className="text-[clamp(1.6rem,3vw,2.1rem)]">How pickup works</h2>
+          <h2 className="text-[clamp(1.6rem,3vw,2.1rem)]">How it works</h2>
           <ol className="mt-8 grid gap-8 sm:grid-cols-3">
             {[
-              ["01", "Order & pay", "Login, share contact details at checkout, pay online or at counter."],
-              ["02", "We prep", "Staff confirm and pack your catch for your pickup window."],
-              ["03", "Collect", "Show your pickup code at Maya Fish Mart and take it home fresh."],
+              ["01", "Order & pay", "Share contact details at checkout, pay online or later."],
+              ["02", "We prep", "Staff confirm and pack your catch for pickup or courier."],
+              ["03", "Collect or receive", "Show your code at the counter, or track Borzo delivery."],
             ].map(([n, title, body]) => (
               <li key={n}>
                 <span className="eyebrow text-aqua">{n}</span>

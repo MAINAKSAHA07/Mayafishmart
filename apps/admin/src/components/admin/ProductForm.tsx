@@ -4,9 +4,15 @@ import type { Category, Product } from "@mayafishmart/shared/types";
 import { paiseToRupees } from "@mayafishmart/shared/money";
 import { slugify } from "@mayafishmart/shared/slug";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 type Mode = "create" | "edit";
+
+function inventoryQty(product?: Product | null) {
+  if (!product?.inventory) return 0;
+  const inv = Array.isArray(product.inventory) ? product.inventory[0] : product.inventory;
+  return Number(inv?.qty_on_hand ?? 0);
+}
 
 export function ProductForm({
   categories,
@@ -14,12 +20,14 @@ export function ProductForm({
   open: controlledOpen,
   onClose,
   mode = "create",
+  formId,
 }: {
   categories: Category[];
   product?: Product | null;
   open?: boolean;
   onClose?: () => void;
   mode?: Mode;
+  formId?: string;
 }) {
   const router = useRouter();
   const isEdit = mode === "edit" && !!product;
@@ -30,6 +38,7 @@ export function ProductForm({
   const [name, setName] = useState(product?.name ?? "");
   const [slug, setSlug] = useState(product?.slug ?? "");
   const [slugTouched, setSlugTouched] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -37,6 +46,10 @@ export function ProductForm({
     setSlug(product?.slug ?? "");
     setSlugTouched(isEdit);
     setError(null);
+    // Bring edit form into view (was easy to miss at top of long lists)
+    requestAnimationFrame(() => {
+      rootRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
   }, [open, product, isEdit]);
 
   function close() {
@@ -72,8 +85,12 @@ export function ProductForm({
     router.refresh();
   }
 
+  const remountKey = `${product?.id ?? "new"}-${open ? "1" : "0"}`;
+
   const form = open ? (
     <form
+      id={formId}
+      key={remountKey}
       onSubmit={onSubmit}
       className="mt-4 grid gap-3 rounded-2xl bg-white/5 p-5 ring-1 ring-white/10 sm:grid-cols-2"
     >
@@ -103,7 +120,6 @@ export function ProductForm({
         name="category_id"
         className="input-field bg-white text-ink"
         defaultValue={product?.category_id ?? ""}
-        key={`cat-${product?.id ?? "new"}-${open}`}
       >
         <option value="">No category</option>
         {categories.map((c) => (
@@ -120,32 +136,28 @@ export function ProductForm({
         placeholder="Price ₹"
         defaultValue={product ? paiseToRupees(product.price_paise) : undefined}
         className="input-field bg-white text-ink"
-        key={`price-${product?.id ?? "new"}-${open}`}
       />
       <select
         name="unit"
         className="input-field bg-white text-ink"
         defaultValue={product?.unit ?? "kg"}
-        key={`unit-${product?.id ?? "new"}-${open}`}
       >
         <option value="kg">kg</option>
         <option value="piece">piece</option>
       </select>
-      {!isEdit && (
-        <input
-          name="qty_on_hand"
-          type="number"
-          step="0.1"
-          defaultValue={10}
-          placeholder="Initial stock"
-          className="input-field bg-white text-ink"
-        />
-      )}
+      <input
+        name="qty_on_hand"
+        type="number"
+        step="0.1"
+        min={0}
+        defaultValue={isEdit ? inventoryQty(product) : 10}
+        placeholder="Stock on hand"
+        className="input-field bg-white text-ink"
+      />
       <select
         name="is_active"
         className="input-field bg-white text-ink"
         defaultValue={product?.is_active === false ? "false" : "true"}
-        key={`active-${product?.id ?? "new"}-${open}`}
       >
         <option value="true">Available (visible)</option>
         <option value="false">Not available (hidden)</option>
@@ -156,15 +168,25 @@ export function ProductForm({
         className="input-field bg-white text-ink sm:col-span-2"
         rows={2}
         defaultValue={product?.description ?? ""}
-        key={`desc-${product?.id ?? "new"}-${open}`}
       />
+      <input
+        name="cut_notes"
+        placeholder="Cut notes (optional)"
+        defaultValue={product?.cut_notes ?? ""}
+        className="input-field bg-white text-ink sm:col-span-2"
+      />
+      {isEdit && product?.image_url ? (
+        <p className="text-xs text-foam/55 sm:col-span-2">
+          Current image kept unless you upload a new one.
+        </p>
+      ) : null}
       <input name="image" type="file" accept="image/*" className="text-sm text-foam/80 sm:col-span-2" />
       {error && <p className="text-sm text-coral sm:col-span-2">{error}</p>}
-      <div className="flex gap-2 sm:col-span-2">
+      <div className="flex flex-wrap gap-2 sm:col-span-2">
         <button
           type="submit"
           disabled={loading}
-          className="rounded-full bg-aqua px-4 py-2 text-sm font-semibold text-ocean-deep"
+          className="rounded-full bg-aqua px-4 py-2 text-sm font-semibold text-ocean-deep disabled:opacity-50"
         >
           {loading ? "Saving…" : isEdit ? "Update product" : "Save product"}
         </button>
@@ -180,11 +202,15 @@ export function ProductForm({
   ) : null;
 
   if (controlledOpen !== undefined) {
-    return form;
+    return (
+      <div ref={rootRef} className="mt-3">
+        {form}
+      </div>
+    );
   }
 
   return (
-    <div className="mt-6">
+    <div ref={rootRef} className="mt-6">
       <button
         type="button"
         onClick={() => setInternalOpen((v) => !v)}

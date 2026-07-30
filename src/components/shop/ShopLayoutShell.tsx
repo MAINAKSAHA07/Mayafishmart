@@ -80,7 +80,7 @@ export default function ShopLayoutShell({
               </div>
             </div>
             <p className="mt-3 max-w-md text-[0.9375rem] leading-relaxed text-foam/70">
-              Fresh catch, counter pickup. Order online, collect when ready.
+              Fresh catch — pickup or delivery. Order online when ready.
             </p>
           </div>
           <p className="text-xs tracking-wide text-foam/45">

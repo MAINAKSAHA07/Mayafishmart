@@ -51,6 +51,12 @@ async function uploadImage(
   return data.publicUrl;
 }
 
+function inventoryRow(product: { inventory?: unknown }) {
+  const inv = product.inventory;
+  if (Array.isArray(inv)) return inv[0] as { qty_on_hand?: number } | undefined;
+  return inv as { qty_on_hand?: number } | null | undefined;
+}
+
 export async function POST(request: NextRequest) {
   const gate = await requireManagerUser();
   if ("error" in gate && gate.error) return gate.error;
@@ -68,6 +74,7 @@ export async function POST(request: NextRequest) {
   const price_rupees = Number(form.get("price_rupees") || 0);
   const unit = String(form.get("unit") || "kg");
   const description = String(form.get("description") || "");
+  const cut_notes = String(form.get("cut_notes") || "") || null;
   const qty_on_hand = Number(form.get("qty_on_hand") || 0);
   const image = form.get("image") as File | null;
   const is_active = String(form.get("is_active") || "true") !== "false";
@@ -84,6 +91,7 @@ export async function POST(request: NextRequest) {
       price_paise: rupeesToPaise(price_rupees),
       unit,
       description,
+      cut_notes,
       image_url,
       is_active,
       gst_rate: 5,
@@ -117,6 +125,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const gate = await requireManagerUser();
   if ("error" in gate && gate.error) return gate.error;
+  const user = gate.user!;
 
   const form = await request.formData();
   const id = String(form.get("id") || "");
@@ -126,11 +135,13 @@ export async function PATCH(request: NextRequest) {
   if (!name) return NextResponse.json({ error: "Name is required" }, { status: 400 });
 
   const admin = createAdminClient();
-  const { data: existing } = await admin.from("products").select("id, slug").eq("id", id).maybeSingle();
+  const { data: existing } = await admin
+    .from("products")
+    .select("id, slug, inventory(*)")
+    .eq("id", id)
+    .maybeSingle();
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Keep existing slug unless name changes enough that client sent a new slug intent.
-  // Auto-regen only when slug field is empty / omitted — otherwise use provided (still sanitized).
   const rawSlug = String(form.get("slug") || "").trim();
   const slug = await uniqueSlug(admin, slugify(rawSlug || name), id);
 
@@ -138,8 +149,11 @@ export async function PATCH(request: NextRequest) {
   const price_rupees = Number(form.get("price_rupees") || 0);
   const unit = String(form.get("unit") || "kg");
   const description = String(form.get("description") || "");
+  const cut_notes = String(form.get("cut_notes") || "") || null;
   const is_active = String(form.get("is_active") || "true") !== "false";
   const image = form.get("image") as File | null;
+  const qtyRaw = form.get("qty_on_hand");
+  const hasQty = qtyRaw !== null && String(qtyRaw).trim() !== "";
 
   const patch: Record<string, unknown> = {
     name,
@@ -148,8 +162,10 @@ export async function PATCH(request: NextRequest) {
     price_paise: rupeesToPaise(price_rupees),
     unit,
     description,
+    cut_notes,
     is_active,
     min_order_qty: defaultMinOrderQty(name || slug, unit),
+    updated_at: new Date().toISOString(),
   };
 
   const image_url = await uploadImage(admin, image, slug);
@@ -166,5 +182,85 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: error?.message || "Failed" }, { status: 500 });
   }
 
+  if (hasQty) {
+    const nextQty = Number(qtyRaw);
+    if (!Number.isFinite(nextQty) || nextQty < 0) {
+      return NextResponse.json({ error: "Invalid stock quantity" }, { status: 400 });
+    }
+    const prev = Number(inventoryRow(existing)?.qty_on_hand ?? 0);
+    const delta = nextQty - prev;
+    const { data: invRow } = await admin
+      .from("inventory")
+      .select("product_id")
+      .eq("product_id", id)
+      .maybeSingle();
+    if (invRow) {
+      await admin
+        .from("inventory")
+        .update({ qty_on_hand: nextQty, updated_at: new Date().toISOString() })
+        .eq("product_id", id);
+    } else {
+      await admin.from("inventory").insert({
+        product_id: id,
+        qty_on_hand: nextQty,
+        reserved_qty: 0,
+        low_stock_threshold: 2,
+      });
+    }
+    if (delta !== 0) {
+      await admin.from("inventory_movements").insert({
+        product_id: id,
+        delta,
+        reason: "adjustment",
+        actor_id: user.id,
+        note: "Catalog edit",
+      });
+    }
+  }
+
   return NextResponse.json({ product });
+}
+
+export async function DELETE(request: NextRequest) {
+  const gate = await requireManagerUser();
+  if ("error" in gate && gate.error) return gate.error;
+
+  const { searchParams } = new URL(request.url);
+  let id = searchParams.get("id");
+  if (!id) {
+    try {
+      const body = await request.json();
+      id = String(body.id || "");
+    } catch {
+      id = "";
+    }
+  }
+  if (!id) return NextResponse.json({ error: "Product id required" }, { status: 400 });
+
+  const admin = createAdminClient();
+  const { data: existing } = await admin.from("products").select("id, name").eq("id", id).maybeSingle();
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const { count } = await admin
+    .from("order_items")
+    .select("id", { count: "exact", head: true })
+    .eq("product_id", id);
+
+  if ((count ?? 0) > 0) {
+    // Soft-delete: keep history, hide from storefront
+    const { error } = await admin
+      .from("products")
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({
+      ok: true,
+      softDeleted: true,
+      message: "Product has past orders — hidden from storefront instead of permanently deleted.",
+    });
+  }
+
+  const { error } = await admin.from("products").delete().eq("id", id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true, softDeleted: false });
 }

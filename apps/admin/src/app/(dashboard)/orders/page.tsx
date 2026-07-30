@@ -1,5 +1,6 @@
 import { createClient } from "@mayafishmart/shared/supabase/server";
 import { OrderActions } from "@/components/admin/OrderActions";
+import { DeliveryTracking } from "@/components/admin/DeliveryTracking";
 import { formatInr } from "@mayafishmart/shared/money";
 import type { Order, OrderItem } from "@mayafishmart/shared/types";
 
@@ -54,7 +55,10 @@ export default async function AdminOrdersPage({
                 <p className="text-sm text-foam/70">
                   {order.customer_name} · {order.customer_phone}
                 </p>
-                <p className="text-xs text-foam/50">{order.pickup_slot}</p>
+                <p className="text-xs text-foam/50">
+                  {order.fulfillment === "delivery" ? "Delivery" : "Pickup"} · {order.pickup_slot}
+                  {order.borzo_delivery_status ? ` · ${order.borzo_delivery_status}` : ""}
+                </p>
               </div>
               <div className="text-right">
                 <p className="font-semibold text-white tabular-nums">{formatInr(order.total_paise)}</p>
@@ -62,6 +66,11 @@ export default async function AdminOrdersPage({
                   <p className="text-xs text-aqua">
                     −{formatInr(order.discount_paise)}
                     {order.coupon_code ? ` · ${order.coupon_code}` : ""}
+                  </p>
+                )}
+                {(order.delivery_fee_paise ?? 0) > 0 && (
+                  <p className="text-xs text-foam/50">
+                    Delivery {formatInr(order.delivery_fee_paise!)}
                   </p>
                 )}
                 <p className="text-xs text-aqua uppercase">
@@ -76,6 +85,13 @@ export default async function AdminOrdersPage({
                 </li>
               ))}
             </ul>
+            {order.fulfillment === "delivery" ? (
+              <DeliveryTracking
+                orderId={order.id}
+                initialStatus={order.borzo_delivery_status}
+                initialTrackingUrl={order.borzo_tracking_url}
+              />
+            ) : null}
             <OrderActions order={order} />
           </li>
         ))}

@@ -7,37 +7,57 @@ import { createCouponDeps, validateCouponForOrder } from "@/lib/coupons";
 import { resolveCustomerId } from "@/lib/guest-customer";
 import { generatePickupCode } from "@/lib/pickup";
 import { getRazorpay, isRazorpayConfigured } from "@/lib/payments/razorpay";
+import { isBorzoConfigured } from "@/lib/borzo/client";
+import { bookBorzoForOrder, quoteDeliveryFee } from "@/lib/borzo/book";
 
-const bodySchema = z.object({
-  items: z
-    .array(
-      z.object({
-        productId: z.string().uuid().or(z.string().min(1)),
-        qty: z.number().positive(),
-      })
-    )
-    .min(1),
-  customer: z.object({
-    fullName: z.string().min(2),
-    email: z.string().email(),
-    phone: z.string().min(8),
-    address: z.object({
-      line1: z.string().min(3),
-      line2: z.string().optional(),
-      city: z.string().min(2),
-      state: z.string().min(2),
-      pincode: z.string().regex(/^\d{6}$/),
-    }),
-  }),
-  pickupSlot: z.string().min(3),
-  paymentMethod: z.enum(["razorpay", "counter", "cod"]),
-  couponCode: z.string().optional().nullable(),
+const addressSchema = z.object({
+  line1: z.string().min(3),
+  line2: z.string().optional(),
+  city: z.string().min(2),
+  state: z.string().min(2),
+  pincode: z.string().regex(/^\d{6}$/),
 });
+
+const bodySchema = z
+  .object({
+    items: z
+      .array(
+        z.object({
+          productId: z.string().uuid().or(z.string().min(1)),
+          qty: z.number().positive(),
+        })
+      )
+      .min(1),
+    customer: z.object({
+      fullName: z.string().min(2),
+      email: z.string().email(),
+      phone: z.string().min(8),
+      address: addressSchema,
+    }),
+    fulfillment: z.enum(["pickup", "delivery"]).default("pickup"),
+    pickupSlot: z.string().optional(),
+    paymentMethod: z.enum(["razorpay", "counter", "cod"]),
+    couponCode: z.string().optional().nullable(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.fulfillment === "pickup" && (!val.pickupSlot || val.pickupSlot.trim().length < 3)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Pickup slot is required",
+        path: ["pickupSlot"],
+      });
+    }
+  });
 
 export async function POST(request: NextRequest) {
   try {
     const json = await request.json();
     const body = bodySchema.parse(json);
+    const fulfillment = body.fulfillment;
+    const pickupSlot =
+      fulfillment === "delivery"
+        ? body.pickupSlot?.trim() || "ASAP delivery"
+        : body.pickupSlot!.trim();
 
     const supabase = await createClient();
     const {
@@ -132,6 +152,7 @@ export async function POST(request: NextRequest) {
     const productMap = new Map(products.map((p) => [p.id, p]));
     let subtotal = 0;
     let preGst = 0;
+    let totalWeightKg = 0;
     const lineItems: Array<{
       product_id: string;
       product_name: string;
@@ -159,6 +180,8 @@ export async function POST(request: NextRequest) {
       const gst = calcGstPaise(line, Number(product.gst_rate));
       subtotal += line;
       preGst += gst;
+      if (product.unit === "kg") totalWeightKg += item.qty;
+      else totalWeightKg += item.qty * 0.5;
       lineItems.push({
         product_id: product.id,
         product_name: product.name,
@@ -182,6 +205,31 @@ export async function POST(request: NextRequest) {
     const { summary } = couponResult;
     const pickupCode = generatePickupCode();
 
+    let deliveryFeePaise = 0;
+    if (fulfillment === "delivery") {
+      if (!isBorzoConfigured()) {
+        return NextResponse.json(
+          {
+            error:
+              "Delivery is not available right now. Choose pickup or try again later.",
+          },
+          { status: 503 }
+        );
+      }
+      const quote = await quoteDeliveryFee({
+        phone: body.customer.phone,
+        fullName: body.customer.fullName,
+        address: body.customer.address,
+        totalWeightKg,
+      });
+      if (!quote.ok) {
+        return NextResponse.json({ error: quote.error }, { status: 400 });
+      }
+      deliveryFeePaise = quote.deliveryFeePaise;
+    }
+
+    const totalPaise = summary.totalPaise + deliveryFeePaise;
+
     let razorpayOrderId: string | null = null;
     let razorpayPayload: { keyId: string; orderId: string; amount: number } | null = null;
 
@@ -194,7 +242,7 @@ export async function POST(request: NextRequest) {
       }
       const rzp = getRazorpay();
       const rzOrder = await rzp.orders.create({
-        amount: summary.totalPaise,
+        amount: totalPaise,
         currency: "INR",
         receipt: pickupCode,
       });
@@ -202,7 +250,7 @@ export async function POST(request: NextRequest) {
       razorpayPayload = {
         keyId: process.env.RAZORPAY_KEY_ID!,
         orderId: rzOrder.id,
-        amount: summary.totalPaise,
+        amount: totalPaise,
       };
     }
 
@@ -212,15 +260,16 @@ export async function POST(request: NextRequest) {
         pickup_code: pickupCode,
         customer_id: customerId,
         status: "placed",
-        fulfillment: "pickup",
-        pickup_slot: body.pickupSlot,
+        fulfillment,
+        pickup_slot: pickupSlot,
         payment_method: body.paymentMethod,
         payment_status: "pending",
         razorpay_order_id: razorpayOrderId,
         subtotal_paise: summary.subtotalPaise,
         discount_paise: summary.discountPaise,
         gst_paise: summary.gstPaise,
-        total_paise: summary.totalPaise,
+        delivery_fee_paise: deliveryFeePaise,
+        total_paise: totalPaise,
         coupon_id: summary.coupon?.id ?? null,
         coupon_code: summary.coupon?.code ?? null,
         customer_name: body.customer.fullName,
@@ -288,11 +337,39 @@ export async function POST(request: NextRequest) {
       last_order_at: new Date().toISOString(),
     });
 
+    let borzoWarning: string | null = null;
+    if (fulfillment === "delivery" && body.paymentMethod === "counter") {
+      const booked = await bookBorzoForOrder(
+        admin,
+        {
+          id: order.id,
+          pickup_code: order.pickup_code,
+          customer_phone: order.customer_phone,
+          customer_name: order.customer_name,
+          customer_address: order.customer_address,
+          fulfillment: order.fulfillment,
+        },
+        totalWeightKg
+      );
+      if (!booked.ok) {
+        borzoWarning =
+          "Order saved, but courier booking failed. We will arrange delivery — contact the shop if needed.";
+      } else {
+        const { data: refreshed } = await admin
+          .from("orders")
+          .select("*")
+          .eq("id", order.id)
+          .single();
+        if (refreshed) Object.assign(order, refreshed);
+      }
+    }
+
     return NextResponse.json({
       order,
-      pricing: summary,
+      pricing: { ...summary, deliveryFeePaise, totalPaise },
       razorpay: razorpayPayload,
       guest: !user,
+      borzoWarning,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Order failed";
