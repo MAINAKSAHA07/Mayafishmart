@@ -27,7 +27,14 @@ function LoginForm() {
     const { error: signError } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (signError) {
-      setError(signError.message);
+      const msg = signError.message.toLowerCase();
+      if (msg.includes("email not confirmed") || msg.includes("not confirmed")) {
+        setError("Confirm your email first — check inbox/spam, then try again.");
+      } else if (msg.includes("invalid login credentials") || msg.includes("invalid credentials")) {
+        setError("Wrong email or password.");
+      } else {
+        setError(signError.message);
+      }
       return;
     }
     router.push(next);

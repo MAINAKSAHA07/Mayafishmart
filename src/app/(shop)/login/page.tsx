@@ -16,12 +16,32 @@ function emailRedirectTo(nextPath: string) {
   return `${base.replace(/\/$/, "")}/auth/callback?next=${encodeURIComponent(next)}`;
 }
 
+function friendlyAuthError(message: string, intent: "signin" | "signup") {
+  const m = message.toLowerCase();
+  if (m.includes("email not confirmed") || m.includes("not confirmed")) {
+    return "Confirm your email first — check your inbox (and spam), then sign in.";
+  }
+  if (m.includes("invalid login credentials") || m.includes("invalid credentials")) {
+    return intent === "signin"
+      ? "Wrong email or password. Try again, or create an account."
+      : message;
+  }
+  if (m.includes("user already registered") || m.includes("already been registered")) {
+    return "That email already has an account. Sign in instead.";
+  }
+  if (m.includes("password")) {
+    return message;
+  }
+  return message;
+}
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/account";
   const guestHref = next.startsWith("/") && next !== "/login" ? next : "/checkout";
   const cameFromCheckout = next === "/checkout" || next.startsWith("/checkout");
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [mode, setMode] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -42,32 +62,55 @@ function LoginForm() {
     }
     setLoading(true);
     const supabase = createClient();
-    const { error: signError } = await supabase.auth.signInWithPassword({ email, password });
-    if (signError) {
-      const { error: upError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { role: "customer" },
-          emailRedirectTo: emailRedirectTo(next),
-        },
-      });
-      if (upError) {
-        setError(upError.message);
-        setLoading(false);
+
+    if (authMode === "signin") {
+      const { error: signError } = await supabase.auth.signInWithPassword({ email, password });
+      setLoading(false);
+      if (signError) {
+        setError(friendlyAuthError(signError.message, "signin"));
         return;
       }
-      setInfo("Account created. Check email if confirmation is required, then sign in.");
-      setLoading(false);
+      router.push(next);
+      router.refresh();
       return;
     }
-    router.push(next);
-    router.refresh();
+
+    const { data, error: upError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { role: "customer" },
+        emailRedirectTo: emailRedirectTo(next),
+      },
+    });
+    setLoading(false);
+    if (upError) {
+      setError(friendlyAuthError(upError.message, "signup"));
+      return;
+    }
+
+    // Supabase returns a user with empty identities when email already exists (anti-enumeration)
+    const identities = data.user?.identities ?? [];
+    if (data.user && identities.length === 0) {
+      setError("That email already has an account. Sign in instead.");
+      setAuthMode("signin");
+      return;
+    }
+
+    if (data.session) {
+      router.push(next);
+      router.refresh();
+      return;
+    }
+
+    setInfo("Account created. Check your email to confirm, then sign in.");
+    setAuthMode("signin");
   }
 
   async function sendOtp(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setInfo(null);
     if (!isSupabaseConfigured()) {
       setError("Connect Supabase env vars to enable phone OTP.");
       return;
@@ -109,11 +152,11 @@ function LoginForm() {
     <div className="mx-auto max-w-md px-4 py-14 sm:px-6 sm:py-20">
       <Logo size={64} priority />
       <h1 className="mt-5 text-[clamp(2rem,5vw,2.6rem)] text-ocean-deep">
-        {cameFromCheckout ? "Almost there" : "Sign in"}
+        {cameFromCheckout ? "Almost there" : authMode === "signup" ? "Create account" : "Sign in"}
       </h1>
       <p className="mt-3 text-[0.975rem] leading-relaxed text-muted">
         {cameFromCheckout
-          ? "No account needed to place a pickup order. Continue as guest, or sign in to autofill."
+          ? "No account needed to place an order. Continue as guest, or sign in to autofill."
           : "Sign in for order history — or continue as guest to checkout."}
       </p>
 
@@ -123,7 +166,39 @@ function LoginForm() {
       <p className="mt-3 text-center text-sm text-muted">Login is optional</p>
 
       <div className="surface mt-8 p-5 sm:p-6">
-        <p className="mb-4 text-sm font-semibold text-ink">Or sign in</p>
+        <p className="mb-4 text-sm font-semibold text-ink">Or use your account</p>
+
+        {mode === "email" ? (
+          <div className="mb-4 flex gap-2" role="tablist" aria-label="Account action">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={authMode === "signin"}
+              onClick={() => {
+                setAuthMode("signin");
+                setError(null);
+                setInfo(null);
+              }}
+              className={`chip ${authMode === "signin" ? "chip-active" : "chip-idle"}`}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={authMode === "signup"}
+              onClick={() => {
+                setAuthMode("signup");
+                setError(null);
+                setInfo(null);
+              }}
+              className={`chip ${authMode === "signup" ? "chip-active" : "chip-idle"}`}
+            >
+              Create account
+            </button>
+          </div>
+        ) : null}
+
         <div className="flex gap-2" role="tablist" aria-label="Login method">
           <button
             type="button"
@@ -170,14 +245,18 @@ function LoginForm() {
                 type="password"
                 required
                 minLength={6}
-                autoComplete="current-password"
+                autoComplete={authMode === "signup" ? "new-password" : "current-password"}
                 className="input-field"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
             <button type="submit" className="btn-ghost w-full" disabled={loading}>
-              {loading ? "Please wait…" : "Sign in / Sign up"}
+              {loading
+                ? "Please wait…"
+                : authMode === "signup"
+                  ? "Create account"
+                  : "Sign in"}
             </button>
           </form>
         ) : (
@@ -225,7 +304,11 @@ function LoginForm() {
             {error}
           </p>
         )}
-        {info && <p className="mt-4 text-sm text-aqua">{info}</p>}
+        {info && (
+          <p className="mt-4 text-sm text-aqua" role="status">
+            {info}
+          </p>
+        )}
       </div>
     </div>
   );
